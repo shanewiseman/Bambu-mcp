@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import hashlib
 import io
+import math
 import mimetypes
 import os
 import shutil
@@ -279,7 +280,7 @@ class ArtifactStore:
             cast(Any, trimesh.repair.fix_normals)(mesh)
         mesh.apply_scale(transform.scale)
         matrix = cast(Any, trimesh.transformations.euler_matrix)(
-            *(angle * 3.141592653589793 / 180 for angle in transform.rotate_degrees)
+            *(math.radians(angle) for angle in transform.rotate_degrees)
         )
         mesh.apply_transform(matrix)
         mesh.apply_translation(transform.translate_mm)

@@ -194,8 +194,21 @@ async def test_snapshot_success_error_and_timeout(monkeypatch: pytest.MonkeyPatc
     process.returncode = 1
     process.stdout = b""
     process.stderr = b"decoder error"
-    with pytest.raises(ProtocolError, match="decoder error"):
+    with pytest.raises(ProtocolError, match=r"ffmpeg exit 1.*decoder error"):
         await camera.snapshot("192.0.2.1", "12345678")
+
+    process.returncode = 7
+    process.stderr = b""
+    with pytest.raises(ProtocolError, match=r"ffmpeg exit 7.*no diagnostic output"):
+        await camera.snapshot("192.0.2.1", "12345678")
+
+    access_code = "secret #1"
+    process.stderr = b"failed rtsps://bblp:secret%20%231@192.0.2.1 and raw secret #1"
+    with pytest.raises(ProtocolError) as caught:
+        await camera.snapshot("192.0.2.1", access_code)
+    assert access_code not in str(caught.value)
+    assert "secret%20%231" not in str(caught.value)
+    assert str(caught.value).count("<redacted>") == 2
 
     async def timeout(awaitable: Any, timeout_seconds: float) -> Any:
         awaitable.close()

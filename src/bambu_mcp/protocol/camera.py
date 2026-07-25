@@ -19,6 +19,14 @@ def camera_url(host: str, access_code: str) -> str:
     return f"rtsps://bblp:{encoded_access_code}@{url_host}:322/streaming/live/1"
 
 
+def _failure_reason(stderr: bytes, access_code: str) -> str:
+    reason = stderr.decode(errors="replace").strip()
+    if access_code:
+        reason = reason.replace(access_code, "<redacted>")
+        reason = reason.replace(quote(access_code, safe=""), "<redacted>")
+    return reason[-200:] or "ffmpeg produced no diagnostic output"
+
+
 async def snapshot(host: str, access_code: str, *, timeout_seconds: float = 15) -> bytes:
     try:
         process = await asyncio.create_subprocess_exec(
@@ -49,6 +57,6 @@ async def snapshot(host: str, access_code: str, *, timeout_seconds: float = 15) 
         await process.wait()
         raise ProtocolError("camera snapshot timed out") from exc
     if process.returncode != 0 or not stdout:
-        reason = stderr.decode(errors="replace")[-200:]
-        raise ProtocolError(f"camera snapshot failed: {reason}")
+        reason = _failure_reason(stderr, access_code)
+        raise ProtocolError(f"camera snapshot failed (ffmpeg exit {process.returncode}): {reason}")
     return stdout
