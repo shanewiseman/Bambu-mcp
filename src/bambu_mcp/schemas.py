@@ -171,3 +171,4 @@ class HealthView(StrictModel):
     database: bool
     artifact_store: bool
     slicer: bool | None = None
+    slicer_version: str | None = None

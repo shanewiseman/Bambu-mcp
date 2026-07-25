@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import ipaddress
+from urllib.parse import quote
 
 from bambu_mcp.errors import ProtocolError, ValidationError
 
@@ -13,10 +14,9 @@ def camera_url(host: str, access_code: str) -> str:
         address = ipaddress.ip_address(host)
     except ValueError as exc:
         raise ValidationError("camera snapshots require a literal printer IP") from exc
-    if any(char in access_code for char in "\r\n@:/"):
-        raise ValidationError("access code contains URL-unsafe characters")
+    encoded_access_code = quote(access_code, safe="")
     url_host = f"[{address}]" if address.version == 6 else str(address)
-    return f"rtsps://bblp:{access_code}@{url_host}:322/streaming/live/1"
+    return f"rtsps://bblp:{encoded_access_code}@{url_host}:322/streaming/live/1"
 
 
 async def snapshot(host: str, access_code: str, *, timeout_seconds: float = 15) -> bytes:

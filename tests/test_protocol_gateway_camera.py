@@ -143,8 +143,9 @@ def test_camera_url_validation() -> None:
     )
     with pytest.raises(ValidationError, match="literal"):
         camera.camera_url("printer.local", "12345678")
-    with pytest.raises(ValidationError, match="unsafe"):
-        camera.camera_url("192.0.2.1", "bad@code")
+    assert camera.camera_url("192.0.2.1", "space #?%@:\u00e7/\r\n") == (
+        "rtsps://bblp:space%20%23%3F%25%40%3A%C3%A7%2F%0D%0A@192.0.2.1:322/streaming/live/1"
+    )
 
 
 class FakeProcess:
