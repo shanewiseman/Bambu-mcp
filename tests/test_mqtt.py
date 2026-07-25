@@ -105,8 +105,15 @@ async def test_mqtt_command_timeout_publish_error_and_validation() -> None:
     transport.error = RuntimeError("publish failed")
     with pytest.raises(RuntimeError, match="publish failed"):
         await client.command("print", "pause")
-    with pytest.raises(ValidationError, match="family"):
-        await client.command("bad-family", "pause")
+    for family, command in (
+        ("bad-family", "pause"),
+        ("Print", "pause"),
+        ("prínt", "pause"),
+        ("print", "Pause"),
+        ("print", "paúse"),
+    ):
+        with pytest.raises(ValidationError, match="family"):
+            await client.command(family, command)
 
 
 @pytest.mark.asyncio

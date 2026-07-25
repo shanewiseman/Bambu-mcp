@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import json
+import re
 import ssl
 import threading
 from collections import OrderedDict
@@ -19,6 +20,8 @@ from paho.mqtt.reasoncodes import ReasonCode
 from bambu_mcp.errors import ProtocolError, ValidationError
 from bambu_mcp.schemas import CommandResult
 from bambu_mcp.state import deep_merge
+
+PROTOCOL_NAME = re.compile(r"^[a-z][a-z0-9_]*$", re.ASCII)
 
 
 class PublishTransport(Protocol):
@@ -108,7 +111,7 @@ class MQTTCommandClient:
         command: str,
         parameters: dict[str, Any] | None = None,
     ) -> CommandResult:
-        if not family.isidentifier() or not command.replace("_", "").isalnum():
+        if not PROTOCOL_NAME.fullmatch(family) or not PROTOCOL_NAME.fullmatch(command):
             raise ValidationError("invalid protocol family or command")
         sequence_id = self.sequence.next()
         payload = {
