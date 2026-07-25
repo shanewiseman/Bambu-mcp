@@ -22,7 +22,6 @@ from bambu_mcp.models import Artifact
 from bambu_mcp.schemas import ArtifactView, TransformSpec
 from bambu_mcp.security import confined_path
 
-ALLOWED_EXTENSIONS = {".stl", ".3mf", ".jpg", ".jpeg"}
 ZIP_SIGNATURE = b"PK\x03\x04"
 STL_SIGNATURE = b"solid"
 

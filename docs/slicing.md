@@ -14,6 +14,16 @@ and material routes. The sidecar maps profile names to full JSON files below
 
 The official CLI uses `--load-settings`, `--load-filaments`, `--slice`, and
 `--export-3mf`. This project executes an argument array directly—never a shell.
+The sidecar always maps `supports` to the pinned CLI's `--enable-support`
+print override (`0` or `1`), so a process profile cannot silently replace the
+request. For `copies > 1`, STL input maps to `--clone-objects`; Bambu project
+3MF input maps to the selected-plate `--repetitions` transform. The pinned CLI
+rejects repetitions for a generic, non-Bambu 3MF instead of ignoring the copy
+request, and that failure is returned to the caller. These mappings follow the
+upstream definitions for
+[`enable_support`](https://github.com/bambulab/BambuStudio/blob/42d319c6692fa8e64790fddf0cdaafd2a4254bcc/src/libslic3r/PrintConfig.cpp#L5075-L5080),
+[`repetitions`](https://github.com/bambulab/BambuStudio/blob/42d319c6692fa8e64790fddf0cdaafd2a4254bcc/src/libslic3r/PrintConfig.cpp#L9572-L9577), and
+[`clone_objects`](https://github.com/bambulab/BambuStudio/blob/42d319c6692fa8e64790fddf0cdaafd2a4254bcc/src/libslic3r/PrintConfig.cpp#L9690-L9695).
 Outputs land at a job-specific path in the shared artifact volume and are
 re-ingested by hash after validation.
 
