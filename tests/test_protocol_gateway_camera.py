@@ -78,6 +78,29 @@ def test_ftps_client_upload_list_delete_and_failures(
         client.delete("plate.3mf")
 
 
+def test_ftps_upload_nonseekable_and_from_current_position(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    class NonSeekable(io.BytesIO):
+        def tell(self) -> int:
+            raise io.UnsupportedOperation("not seekable")
+
+        def seek(self, *args: Any, **kwargs: Any) -> int:
+            raise io.UnsupportedOperation("not seekable")
+
+    client = FTPSClient("192.0.2.10", "12345678", Path("certs/bambu-lab-ca.pem"))
+    fake = FakeFTP()
+    monkeypatch.setattr(client, "_connect", lambda: fake)
+
+    client.upload("plate.3mf", NonSeekable(b"streamed"))
+    assert fake.data == b"streamed"
+
+    positioned = io.BytesIO(b"prefix-payload")
+    positioned.seek(len(b"prefix-"))
+    client.upload("plate.3mf", positioned)
+    assert fake.data == b"payload"
+
+
 def test_ftps_upload_size_mismatch(monkeypatch: pytest.MonkeyPatch) -> None:
     client = FTPSClient("192.0.2.10", "12345678", Path("certs/bambu-lab-ca.pem"))
     fake = FakeFTP()
@@ -89,6 +112,9 @@ def test_ftps_upload_size_mismatch(monkeypatch: pytest.MonkeyPatch) -> None:
 
 def test_camera_url_validation() -> None:
     assert camera.camera_url("192.0.2.1", "12345678").startswith("rtsps://bblp:")
+    assert camera.camera_url("2001:db8::42", "12345678") == (
+        "rtsps://bblp:12345678@[2001:db8::42]:322/streaming/live/1"
+    )
     with pytest.raises(ValidationError, match="literal"):
         camera.camera_url("printer.local", "12345678")
     with pytest.raises(ValidationError, match="unsafe"):
