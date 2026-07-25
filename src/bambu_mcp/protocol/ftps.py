@@ -6,6 +6,7 @@ from __future__ import annotations
 import ftplib  # nosec B402
 import io
 import socket
+from contextlib import suppress
 from pathlib import Path
 from typing import BinaryIO
 
@@ -45,16 +46,31 @@ class ImplicitFTPTLS(ftplib.FTP_TLS):
         self.port = port or 990
         effective_timeout = self.timeout if timeout is None else timeout
         self.source_address = source_address
-        self.sock = socket.create_connection(
+        raw_socket = socket.create_connection(
             (self.host, self.port),
             effective_timeout,
             source_address=self.source_address,
         )
-        self.af = self.sock.family
-        self.sock = self.context.wrap_socket(self.sock)
-        self.file = self.sock.makefile("r", encoding=self.encoding)
-        self.welcome = self.getresp()
-        return self.welcome
+        self.sock = raw_socket
+        self.af = raw_socket.family
+        try:
+            self.sock = self.context.wrap_socket(raw_socket)
+            self.file = self.sock.makefile("r", encoding=self.encoding)
+            self.welcome = self.getresp()
+            return self.welcome
+        except Exception:
+            partial_file = self.file
+            partial_socket = self.sock
+            self.file = None
+            self.sock = None
+            self.welcome = None
+            if partial_file is not None:
+                with suppress(Exception):
+                    partial_file.close()
+            if partial_socket is not None:
+                with suppress(Exception):
+                    partial_socket.close()
+            raise
 
 
 class FTPSClient:
