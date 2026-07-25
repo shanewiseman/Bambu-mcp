@@ -44,6 +44,7 @@ def _bearer_token(authorization: str) -> str | None:
 def create_app(container: Container) -> FastAPI:
     mcp = create_mcp(container)
     mcp_app = mcp.streamable_http_app()
+    expected_api_key = container.settings.resolved_api_key
 
     @asynccontextmanager
     async def lifespan(app: FastAPI) -> AsyncIterator[None]:
@@ -69,7 +70,7 @@ def create_app(container: Container) -> FastAPI:
     async def authenticate(request: Request, call_next: Any) -> Any:
         if request.url.path in {"/healthz", "/readyz"}:
             return await call_next(request)
-        expected = container.settings.resolved_api_key
+        expected = expected_api_key
         authorization = request.headers.get("authorization", "")
         bearer = _bearer_token(authorization)
         supplied = request.headers.get("x-api-key") or bearer

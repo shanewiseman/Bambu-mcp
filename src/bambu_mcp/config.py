@@ -77,6 +77,12 @@ class Settings(BaseSettings):
             raise ValueError("an API key is required when binding outside loopback")
         return self
 
+    @model_validator(mode="after")
+    def require_local_import_root(self) -> Settings:
+        if self.enable_local_imports and self.import_root is None:
+            raise ValueError("local imports require a configured import root")
+        return self
+
     @property
     def resolved_api_key(self) -> str | None:
         return read_secret(self.api_key, self.api_key_file)
