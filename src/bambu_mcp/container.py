@@ -36,7 +36,7 @@ def build_container(settings: Settings, *, slicer: Slicer | None = None) -> Cont
     if not key:
         raise SafetyError("BAMBU_MCP_CREDENTIAL_KEY_FILE (or BAMBU_MCP_CREDENTIAL_KEY) is required")
     database = Database(settings.database_url)
-    database.create_schema()
+    database.upgrade_schema()
     database.recover_interrupted_jobs()
     artifacts = ArtifactStore(
         settings.artifact_root,

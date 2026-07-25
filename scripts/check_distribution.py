@@ -13,6 +13,13 @@ ALLOWED_TOP_LEVEL = {
 }
 WHEEL_FORBIDDEN_PARTS = {"certs", "profiles", "BambuStudio", "bambu-studio"}
 BINARY_SUFFIXES = {".AppImage", ".deb", ".dll", ".dylib", ".exe", ".rpm", ".so"}
+REQUIRED_MIGRATION_FILES = {
+    "bambu_mcp/migrations/__init__.py",
+    "bambu_mcp/migrations/env.py",
+    "bambu_mcp/migrations/script.py.mako",
+    "bambu_mcp/migrations/versions/__init__.py",
+    "bambu_mcp/migrations/versions/0001_initial_schema.py",
+}
 
 
 def fail(message: str) -> None:
@@ -33,6 +40,9 @@ def main() -> None:
             fail(f"unexpected wheel roots: {sorted(top_level - ALLOWED_TOP_LEVEL)}")
         if any(part in name.split("/") for name in names for part in WHEEL_FORBIDDEN_PARTS):
             fail("wheel includes Studio, certificate, or profile material")
+        missing_migrations = REQUIRED_MIGRATION_FILES - set(names)
+        if missing_migrations:
+            fail(f"wheel is missing packaged migrations: {sorted(missing_migrations)}")
 
     with tarfile.open(sdists[0], "r:gz") as archive:
         paths = [PurePosixPath(name) for name in archive.getnames()]

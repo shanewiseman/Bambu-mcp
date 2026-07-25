@@ -216,27 +216,48 @@ async def test_lan_gateway_connects_once_and_delegates_protocols(
 def test_cli_runtime_commands_and_module_entrypoint(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
+    database_instances: list[Any] = []
+
     class FakeDatabase:
-        def __init__(self) -> None:
-            self.schema_calls = 0
+        def __init__(self, database_url: str) -> None:
+            assert database_url == "sqlite:///cli.db"
+            self.upgrade_calls = 0
             self.dispose_calls = 0
             self.engine = SimpleNamespace(dispose=self.dispose)
+            database_instances.append(self)
 
-        def create_schema(self) -> None:
-            self.schema_calls += 1
+        def upgrade_schema(self) -> None:
+            self.upgrade_calls += 1
 
         def dispose(self) -> None:
             self.dispose_calls += 1
 
-    database = FakeDatabase()
-    container = SimpleNamespace(database=database)
-    settings = SimpleNamespace(bind_host="127.0.0.1", bind_port=8123, log_level="WARNING")
+    container = SimpleNamespace(database=SimpleNamespace())
+    prepared: list[bool] = []
+    settings = SimpleNamespace(
+        bind_host="127.0.0.1",
+        bind_port=8123,
+        log_level="WARNING",
+        database_url="sqlite:///cli.db",
+        prepare_directories=lambda: prepared.append(True),
+    )
     monkeypatch.setattr(cli, "Settings", lambda: settings)
-    monkeypatch.setattr(cli, "build_container", lambda value: container)
+    monkeypatch.setattr(cli, "Database", FakeDatabase)
+    build_calls: list[Any] = []
+
+    def fake_build_container(value: Any) -> Any:
+        build_calls.append(value)
+        return container
+
+    monkeypatch.setattr(cli, "build_container", fake_build_container)
 
     monkeypatch.setattr("sys.argv", ["bambu-mcp", "init-db"])
     assert cli.main() is None
-    assert (database.schema_calls, database.dispose_calls) == (1, 1)
+    assert prepared == [True]
+    assert len(database_instances) == 1
+    database = database_instances[0]
+    assert (database.upgrade_calls, database.dispose_calls) == (1, 1)
+    assert build_calls == []
 
     transports: list[str] = []
     mcp = SimpleNamespace(run=lambda *, transport: transports.append(transport))
@@ -244,6 +265,7 @@ def test_cli_runtime_commands_and_module_entrypoint(
     monkeypatch.setattr("sys.argv", ["bambu-mcp", "stdio"])
     assert cli.main() is None
     assert transports == ["stdio"]
+    assert build_calls == [settings]
 
     app = object()
     uvicorn_call: dict[str, Any] = {}
@@ -261,6 +283,7 @@ def test_cli_runtime_commands_and_module_entrypoint(
         "port": 8123,
         "log_level": "warning",
     }
+    assert build_calls == [settings, settings]
 
     entrypoint_calls: list[bool] = []
     monkeypatch.setattr(cli, "main", lambda: entrypoint_calls.append(True))

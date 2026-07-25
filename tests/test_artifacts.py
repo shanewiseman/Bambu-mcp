@@ -23,7 +23,7 @@ from bambu_mcp.schemas import TransformSpec
 
 def store(tmp_path: Path, *, max_bytes: int = 1_000_000) -> tuple[Database, ArtifactStore]:
     database = Database(f"sqlite:///{tmp_path / 'db.sqlite'}")
-    database.create_schema()
+    database.upgrade_schema()
     artifacts = ArtifactStore(
         tmp_path / "artifacts",
         max_bytes=max_bytes,

@@ -227,6 +227,8 @@ class PahoTransport:
         if result.rc != mqtt.MQTT_ERR_SUCCESS:
             raise ProtocolError(f"MQTT publish failed with code {result.rc}")
         await asyncio.to_thread(result.wait_for_publish, 10)
+        if not result.is_published():
+            raise ProtocolError("MQTT publish did not complete within timeout")
 
     def _on_connect(
         self,
