@@ -343,6 +343,52 @@ def test_readyz_fails_closed_when_binary_cannot_launch(
     assert response.json()["ready"] is False
 
 
+@pytest.mark.parametrize(("job_mode", "expected_status"), [(0o2770, 200), (0o2750, 422)])
+def test_sidecar_tolerates_nonowner_chmod_only_for_safe_modes(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    job_mode: int,
+    expected_status: int,
+) -> None:
+    sidecar_environment(tmp_path, monkeypatch)
+    monkeypatch.setattr(slicer_sidecar, "DUAL_SMOKE_OK", True)
+    work_root = slicer_sidecar.ARTIFACT_ROOT / "work"
+    work = work_root / "job"
+    work.mkdir(parents=True)
+    original_chmod = Path.chmod
+    original_chmod(work_root, 0o2770)
+    original_chmod(work, job_mode)
+    protected = {work_root.resolve(), work.resolve()}
+
+    def reject_nonowner_chmod(path: Path, mode: int) -> None:
+        if path.resolve() in protected and mode == 0o2770:
+            raise PermissionError("not owner")
+        original_chmod(path, mode)
+
+    async def create(*args: Any, **kwargs: Any) -> SidecarProcess:
+        output = work / "output.gcode.3mf"
+        output.write_bytes(make_3mf(sliced=True))
+        return SidecarProcess()
+
+    monkeypatch.setattr(Path, "chmod", reject_nonowner_chmod)
+    monkeypatch.setattr(asyncio, "create_subprocess_exec", create)
+    payload = {
+        "job_id": "job",
+        "artifact_id": "a" * 64,
+        "filename": "part.stl",
+        "kind": "stl",
+        "settings": SliceSettings().model_dump(mode="json"),
+    }
+    with TestClient(slicer_sidecar.app) as client:
+        response = client.post("/slice", json=payload)
+
+    assert response.status_code == expected_status
+    if expected_status == 200:
+        assert response.json()["metadata"]["sliced"] is True
+    else:
+        assert "unsafe work directory permissions" in response.text
+
+
 def test_sidecar_http_health_ready_and_dual_gate(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:

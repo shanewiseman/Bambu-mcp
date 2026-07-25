@@ -6,6 +6,7 @@ import asyncio
 import os
 import re
 import shutil
+import stat
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 from pathlib import Path
@@ -51,6 +52,17 @@ def artifact_path(artifact_id: str) -> Path:
     if not path.is_relative_to(ARTIFACT_ROOT) or not path.is_file():
         raise ValueError("source artifact is unavailable")
     return path
+
+
+def enforce_shared_directory_mode(path: Path) -> None:
+    try:
+        path.chmod(0o2770)
+    except PermissionError as exc:
+        if stat.S_IMODE(path.stat().st_mode) == 0o2770:
+            return
+        raise ValueError("unsafe work directory permissions") from exc
+    if stat.S_IMODE(path.stat().st_mode) != 0o2770:
+        raise ValueError("unsafe work directory permissions")
 
 
 def build_command(request: SliceRequest, source: Path, output: Path) -> list[str]:
@@ -155,7 +167,7 @@ async def slice_model(request: SliceRequest) -> dict[str, Any]:
         work_root = work_root_path.resolve()
         if not work_root.is_relative_to(ARTIFACT_ROOT):
             raise ValueError("unsafe work directory")
-        work_root.chmod(0o2770)
+        enforce_shared_directory_mode(work_root)
         work_path = work_root / request.job_id
         if work_path.is_symlink():
             raise ValueError("unsafe work directory")
@@ -163,7 +175,7 @@ async def slice_model(request: SliceRequest) -> dict[str, Any]:
         work = work_path.resolve()
         if not work.is_relative_to(work_root) or not work.is_dir():
             raise ValueError("unsafe work directory")
-        work.chmod(0o2770)
+        enforce_shared_directory_mode(work)
         source = work / f"source.{request.kind}"
         output = work / "output.gcode.3mf"
         for stale in (work / "source.stl", work / "source.3mf", output):
