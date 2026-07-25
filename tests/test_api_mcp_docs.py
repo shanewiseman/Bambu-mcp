@@ -86,6 +86,25 @@ def test_http_auth_health_readiness_upload_download_and_errors(
         assert invalid.status_code == 422
 
 
+def test_health_requires_write_and_traverse_access(
+    container: Container, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    modes: list[int] = []
+
+    def deny_artifact_access(path: os.PathLike[str] | str, mode: int) -> bool:
+        assert Path(path) == container.artifacts.root
+        modes.append(mode)
+        return False
+
+    monkeypatch.setattr(os, "access", deny_artifact_access)
+    with TestClient(create_app(container)) as client:
+        response = client.get("/healthz")
+
+    assert response.json()["artifact_store"] is False
+    assert modes == [os.W_OK | os.X_OK]
+    assert response.json()["status"] == "degraded"
+
+
 def test_http_readiness_failure_and_content_length_guard(container: Container) -> None:
     assert isinstance(container.slicer, FakeSlicer)
     container.slicer.available = False
