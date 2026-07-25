@@ -6,6 +6,7 @@ import asyncio
 import hmac
 import secrets
 from collections.abc import Callable
+from copy import deepcopy
 from pathlib import Path
 from typing import Any, Protocol
 
@@ -70,7 +71,7 @@ class SimulatedGateway:
         parameters: dict[str, Any] | None = None,
     ) -> CommandResult:
         self.sequence += 1
-        params = parameters or {}
+        params = deepcopy(parameters) if parameters is not None else {}
         self.commands.append((family, command, params))
         if command in self.fail_commands:
             return CommandResult(

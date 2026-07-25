@@ -67,6 +67,78 @@ def test_implicit_ftps_wraps_control_socket_before_welcome(
     assert client.af == 2
 
 
+@pytest.mark.parametrize("failure_stage", ["wrap", "makefile", "greeting"])
+def test_implicit_ftps_closes_partial_socket_on_setup_failure(
+    monkeypatch: pytest.MonkeyPatch, failure_stage: str
+) -> None:
+    class RawSocket:
+        family = 2
+
+        def __init__(self) -> None:
+            self.closed = False
+
+        def close(self) -> None:
+            self.closed = True
+
+    class PartialFile:
+        def __init__(self) -> None:
+            self.closed = False
+
+        def close(self) -> None:
+            self.closed = True
+
+    raw = RawSocket()
+    partial_file = PartialFile()
+
+    class WrappedSocket:
+        def __init__(self) -> None:
+            self.closed = False
+
+        def makefile(self, mode: str, *, encoding: str) -> PartialFile:
+            assert (mode, encoding) == ("r", "utf-8")
+            if failure_stage == "makefile":
+                raise OSError("makefile failed")
+            return partial_file
+
+        def close(self) -> None:
+            self.closed = True
+            raw.close()
+
+    wrapped = WrappedSocket()
+
+    class TLSContext:
+        def wrap_socket(self, sock: RawSocket) -> WrappedSocket:
+            assert sock is raw
+            if failure_stage == "wrap":
+                raise OSError("wrap failed")
+            return wrapped
+
+    monkeypatch.setattr(ftps.socket, "create_connection", lambda *args, **kwargs: raw)
+    client = object.__new__(ImplicitFTPTLS)
+    client.timeout = 12
+    client.context = TLSContext()
+    client.encoding = "utf-8"
+    client.file = None
+    client.sock = None
+    client.welcome = None
+
+    def getresp() -> str:
+        if failure_stage == "greeting":
+            raise ftps.ftplib.error_temp("bad greeting")
+        return "220 ready"
+
+    monkeypatch.setattr(client, "getresp", getresp)
+    with pytest.raises((OSError, ftps.ftplib.Error)):
+        client.connect("192.0.2.10")
+
+    assert raw.closed
+    assert wrapped.closed is (failure_stage != "wrap")
+    assert partial_file.closed is (failure_stage == "greeting")
+    assert client.sock is None
+    assert client.file is None
+    assert client.welcome is None
+
+
 def test_ftps_connection_authenticates_and_closes_on_failure(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
