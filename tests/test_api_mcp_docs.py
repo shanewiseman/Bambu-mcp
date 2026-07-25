@@ -75,6 +75,7 @@ def test_http_auth_health_readiness_upload_download_and_errors(
         content = client.get(f"/api/v1/artifacts/{artifact['id']}/content", headers=auth())
         assert content.status_code == 200
         assert content.content == make_stl()
+        assert content.headers["content-type"] == artifact["media_type"]
         assert "box.stl" in content.headers["content-disposition"]
         missing = client.get("/api/v1/artifacts/" + "0" * 64, headers=auth())
         assert missing.status_code == 404
@@ -217,6 +218,14 @@ def test_generated_references(tmp_path: Path) -> None:
         "/api/v1/artifacts/{artifact_id}",
         "/api/v1/artifacts/{artifact_id}/content",
         "/api/v1/approvals",
+    }
+    content_response = openapi["paths"]["/api/v1/artifacts/{artifact_id}/content"]["get"][
+        "responses"
+    ]["200"]
+    assert "application/json" not in content_response["content"]
+    assert content_response["content"]["application/octet-stream"]["schema"] == {
+        "format": "binary",
+        "type": "string",
     }
     tools = (output / "mcp-tools.md").read_text(encoding="utf-8")
     assert tools.count("\n## `") == 56

@@ -10,7 +10,7 @@ from bambu_mcp.container import Container
 from bambu_mcp.errors import ConflictError, NotFoundError, SafetyError
 from bambu_mcp.gateway import SimulatedGateway
 from bambu_mcp.models import JobState
-from bambu_mcp.schemas import PreparePrintRequest
+from bambu_mcp.schemas import PreparePrintRequest, PrinterRegistration
 
 
 async def running_job(container: Container, printer_id: str) -> str:
@@ -85,7 +85,7 @@ async def test_guarded_approval_binds_parameters_and_printer(
         )
 
     other = container.workflow.register_printer(
-        __import__("bambu_mcp.schemas", fromlist=["PrinterRegistration"]).PrinterRegistration(
+        PrinterRegistration(
             name="Other",
             serial="N6OTHER123",
             host="192.0.2.20",

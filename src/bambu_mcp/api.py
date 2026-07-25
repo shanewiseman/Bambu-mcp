@@ -142,7 +142,19 @@ def create_app(container: Container) -> FastAPI:
             artifact = container.artifacts.get(session, artifact_id)
             return container.artifacts.view(artifact).model_dump(mode="json")
 
-    @app.get("/api/v1/artifacts/{artifact_id}/content", tags=["artifacts"])
+    @app.get(
+        "/api/v1/artifacts/{artifact_id}/content",
+        tags=["artifacts"],
+        response_class=FileResponse,
+        responses={
+            200: {
+                "description": "Immutable artifact bytes",
+                "content": {
+                    "application/octet-stream": {"schema": {"type": "string", "format": "binary"}}
+                },
+            }
+        },
+    )
     def artifact_content(artifact_id: str) -> FileResponse:
         with container.database.session() as session:
             artifact = container.artifacts.get(session, artifact_id)
