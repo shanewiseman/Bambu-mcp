@@ -13,6 +13,13 @@ from bambu_mcp.errors import ProtocolError, ValidationError
 from bambu_mcp.protocol.mqtt import verified_tls_context
 
 
+def stream_position(source: BinaryIO) -> int | None:
+    try:
+        return source.tell()
+    except (AttributeError, OSError, io.UnsupportedOperation):
+        return None
+
+
 def remote_filename(name: str) -> str:
     if (
         not name
@@ -73,13 +80,12 @@ class FTPSClient:
         filename = remote_filename(name)
         client = self._connect()
         try:
+            start = stream_position(source)
             client.storbinary(f"STOR {filename}", source)
             size = client.size(filename)
-            current = source.tell()
-            source.seek(0, io.SEEK_END)
-            expected = source.tell()
-            source.seek(current)
-            if size is not None and size != expected:
+            end = stream_position(source)
+            expected = None if start is None or end is None else end - start
+            if size is not None and expected is not None and size != expected:
                 raise ProtocolError("FTPS upload size verification failed")
         except (OSError, ftplib.Error) as exc:
             raise ProtocolError("FTPS upload failed") from exc
