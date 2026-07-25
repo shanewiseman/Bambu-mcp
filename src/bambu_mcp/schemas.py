@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import ipaddress
 from datetime import datetime
 from enum import StrEnum
 from typing import Any, Literal
@@ -27,8 +28,11 @@ class PrinterRegistration(StrictModel):
     @classmethod
     def reject_host_metacharacters(cls, value: IPvAnyAddress | str) -> str:
         host = str(value)
-        if any(char in host for char in "/\\:@"):
-            raise ValueError("host must be an IP address or bare DNS name")
+        try:
+            ipaddress.ip_address(host)
+        except ValueError:
+            if any(char in host for char in "/\\:@"):
+                raise ValueError("host must be an IP address or bare DNS name") from None
         return host
 
 
