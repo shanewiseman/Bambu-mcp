@@ -1,8 +1,12 @@
 from __future__ import annotations
 
+import asyncio
 import json
+import logging
 import ssl
+from concurrent.futures import Future
 from pathlib import Path
+from types import SimpleNamespace
 from typing import Any
 
 import pytest
@@ -133,7 +137,73 @@ async def test_receive_validation_sparse_state_and_stale_ack() -> None:
         client.report_topic,
         b'{"print":{"sequence_id":"404","command":"pause","result":"success"}}',
     )
+    for sequence_id, reported, expected in (
+        ("405", "TIMEOUT", "timeout"),
+        ("406", "rejected", "rejected"),
+        ("407", "unknown", "failed"),
+    ):
+        pending = client.acks.register(sequence_id)
+        await client.receive(
+            client.report_topic,
+            json.dumps(
+                {
+                    "print": {
+                        "sequence_id": sequence_id,
+                        "command": "pause",
+                        "result": reported,
+                    }
+                }
+            ).encode(),
+        )
+        assert (await pending).result == expected
     client.disconnected()
+
+
+def test_paho_receiver_future_surfaces_failures(caplog: pytest.LogCaptureFixture) -> None:
+    completed: Future[None] = Future()
+    completed.set_result(None)
+    PahoTransport._receiver_done(completed)
+    assert not caplog.records
+
+    failed: Future[None] = Future()
+    failed.set_exception(ProtocolError("injected receiver failure"))
+    with caplog.at_level(logging.ERROR, logger="bambu_mcp.protocol.mqtt"):
+        PahoTransport._receiver_done(failed)
+    assert "MQTT report receiver failed" in caplog.text
+    assert "injected receiver failure" in caplog.text
+
+
+def test_paho_on_message_observes_receiver_future(monkeypatch: pytest.MonkeyPatch) -> None:
+    async def receiver(topic: str, payload: bytes) -> None:
+        del topic, payload
+
+    transport = PahoTransport(
+        host="192.0.2.10",
+        serial="SERIAL",
+        access_code="12345678",
+        ca_file=Path("certs/bambu-lab-ca.pem"),
+        receiver=receiver,
+    )
+    message = SimpleNamespace(topic="device/SERIAL/report", payload=b"{}")
+    transport._on_message(transport.client, None, message)
+
+    submitted: Future[None] = Future()
+    submitted.set_result(None)
+    observed: list[Future[None]] = []
+
+    def submit(coroutine: Any, loop: Any) -> Future[None]:
+        assert loop is transport.loop
+        coroutine.close()
+        return submitted
+
+    monkeypatch.setattr(asyncio, "run_coroutine_threadsafe", submit)
+    monkeypatch.setattr(transport, "_receiver_done", lambda future: observed.append(future))
+    transport.loop = asyncio.new_event_loop()
+    try:
+        transport._on_message(transport.client, None, message)
+    finally:
+        transport.loop.close()
+    assert observed == [submitted]
 
 
 def test_verified_tls_context_uses_ca() -> None:

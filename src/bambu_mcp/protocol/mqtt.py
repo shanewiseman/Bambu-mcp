@@ -4,13 +4,15 @@ from __future__ import annotations
 
 import asyncio
 import json
+import logging
 import re
 import ssl
 import threading
 from collections import OrderedDict
 from collections.abc import Awaitable, Callable, Coroutine
+from concurrent.futures import Future
 from pathlib import Path
-from typing import Any, Protocol
+from typing import Any, Literal, Protocol
 
 import paho.mqtt.client as mqtt
 from paho.mqtt.enums import CallbackAPIVersion
@@ -22,6 +24,14 @@ from bambu_mcp.schemas import CommandResult
 from bambu_mcp.state import deep_merge
 
 PROTOCOL_NAME = re.compile(r"^[a-z][a-z0-9_]*$", re.ASCII)
+LOGGER = logging.getLogger(__name__)
+CommandOutcome = Literal["success", "failed", "timeout", "rejected"]
+COMMAND_OUTCOMES: dict[str, CommandOutcome] = {
+    "success": "success",
+    "failed": "failed",
+    "timeout": "timeout",
+    "rejected": "rejected",
+}
 
 
 class PublishTransport(Protocol):
@@ -160,7 +170,7 @@ class MQTTCommandClient:
                 CommandResult(
                     sequence_id=str(sequence_id),
                     command=str(command),
-                    result="success" if normalized == "success" else "failed",
+                    result=COMMAND_OUTCOMES.get(normalized, "failed"),
                     reason=str(family_payload.get("reason", "")),
                     payload=family_payload,
                 )
@@ -246,7 +256,15 @@ class PahoTransport:
     def _on_message(self, client: mqtt.Client, userdata: Any, message: mqtt.MQTTMessage) -> None:
         del client, userdata
         if self.loop:
-            asyncio.run_coroutine_threadsafe(
+            future = asyncio.run_coroutine_threadsafe(
                 self.receiver(message.topic, bytes(message.payload)),
                 self.loop,
             )
+            future.add_done_callback(self._receiver_done)
+
+    @staticmethod
+    def _receiver_done(future: Future[None]) -> None:
+        try:
+            future.result()
+        except Exception:
+            LOGGER.exception("MQTT report receiver failed")

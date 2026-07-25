@@ -147,7 +147,7 @@ class WorkflowService:
     async def discover_capabilities(self, printer_id: str) -> PrinterView:
         with self.database.session() as session:
             printer = self._printer(session, printer_id)
-            gateway = self._gateway(printer)
+        gateway = await self._gateway(printer)
         result = await gateway.command("info", "get_version")
         if result.result != "success":
             raise ProtocolError(f"version discovery failed: {result.reason}")
@@ -169,7 +169,7 @@ class WorkflowService:
     async def printer_status(self, printer_id: str) -> dict[str, Any]:
         with self.database.session() as session:
             printer = self._printer(session, printer_id)
-            gateway = self._gateway(printer)
+        gateway = await self._gateway(printer)
         state = await gateway.status()
         with self.database.session() as session:
             printer = self._printer(session, printer_id)
@@ -262,8 +262,8 @@ class WorkflowService:
                     {"archive": validation, "material_mapping": mapping},
                 )
                 printer = self._printer(session, job.printer_id)
-                gateway = self._gateway(printer)
 
+            gateway = await self._gateway(printer)
             live_state = await gateway.status()
             self._preflight(live_state, mapping)
             with self.database.session() as session:
@@ -372,11 +372,11 @@ class WorkflowService:
                 self._require_write(printer)
                 if job.plan.get("printer", {}).get("firmware") != printer.firmware:
                     raise SafetyError("printer firmware changed after preflight")
-                gateway = self._gateway(printer)
                 output = self.artifacts.get(session, job.output_artifact_id or "")
                 output_path = self.artifacts.path_for(output.id)
                 plan = job.plan
 
+            gateway = await self._gateway(printer)
             live_state = await gateway.status()
             self._preflight(live_state, plan["material_mapping"])
             remote_name = f"bambu-mcp-{job_id}.gcode.3mf"
@@ -434,9 +434,9 @@ class WorkflowService:
         params = parameters or {}
         with self.database.session() as session:
             printer = self._printer(session, printer_id)
-            gateway = self._gateway(printer)
             if catalogued.risk.value != "read-only":
                 self._require_write(printer)
+        gateway = await self._gateway(printer)
         if catalogued.risk.value in {"guarded", "experimental"}:
             if not job_id or not approval_token:
                 raise SafetyError("guarded operations require a job-bound one-use approval")
@@ -509,7 +509,7 @@ class WorkflowService:
         with self.database.session() as session:
             job = self._job(session, job_id)
             printer = self._printer(session, job.printer_id)
-            gateway = self._gateway(printer)
+        gateway = await self._gateway(printer)
         state = await gateway.status()
         reported = str(state.get("print", {}).get("gcode_state", "")).upper()
         target = {
@@ -573,7 +573,7 @@ class WorkflowService:
     async def printer_files(self, printer_id: str) -> list[str]:
         with self.database.session() as session:
             printer = self._printer(session, printer_id)
-            gateway = self._gateway(printer)
+        gateway = await self._gateway(printer)
         return await gateway.files()
 
     async def camera_snapshot(self, printer_id: str) -> dict[str, Any]:
@@ -609,8 +609,8 @@ class WorkflowService:
             artifact = self.artifacts.get(session, artifact_id)
             self._require_write(printer)
             digest = self._action_digest(job, "file_upload", params)
-            gateway = self._gateway(printer)
             source = self.artifacts.path_for(artifact.id)
+        gateway = await self._gateway(printer)
         self._consume_approval(job_id, approval_token, digest)
         await gateway.upload(filename, source)
         with self.database.session() as session:
@@ -635,7 +635,7 @@ class WorkflowService:
             job = self._job(session, job_id)
             self._require_write(printer)
             digest = self._action_digest(job, "raw_mqtt", action)
-            gateway = self._gateway(printer)
+        gateway = await self._gateway(printer)
         self._consume_approval(job_id, approval_token, digest)
         result = await gateway.command(family, command, parameters)
         self._require_success(result)
@@ -654,7 +654,7 @@ class WorkflowService:
             job = self._job(session, job_id)
             self._require_write(printer)
             digest = self._action_digest(job, "file_delete", params)
-            gateway = self._gateway(printer)
+        gateway = await self._gateway(printer)
         self._consume_approval(job_id, approval_token, digest)
         await gateway.delete(filename)
         with self.database.session() as session:
@@ -776,8 +776,11 @@ class WorkflowService:
             }
         )
 
-    def _gateway(self, printer: Printer) -> PrinterGateway:
-        return self.gateways.get(printer, self.vault.decrypt(printer.encrypted_access_code))
+    async def _gateway(self, printer: Printer) -> PrinterGateway:
+        return await self.gateways.get(
+            printer,
+            self.vault.decrypt(printer.encrypted_access_code),
+        )
 
     def _require_write(self, printer: Printer) -> None:
         self.adapter.require_write_allowed(

@@ -167,8 +167,10 @@ async def test_material_and_fts_preflight_boundaries(
         filament_profiles=("PLA",),
         material_routes=(MaterialRoute(filament_index=0, nozzle="left", ams_slot=0),),
     )
-    gateway = SimulatedGateway(state={"print": {"gcode_state": "IDLE", "hms": []}})
-    container.gateways._gateways[registered_printer["id"]] = gateway
+    await container.workflow.printer_status(registered_printer["id"])
+    gateway = container.gateways._gateways[registered_printer["id"]]
+    assert isinstance(gateway, SimulatedGateway)
+    gateway.state = {"print": {"gcode_state": "IDLE", "hms": []}}
     with pytest.raises(ConflictError, match="requires AMS"):
         await container.workflow.prepare_print_pipeline(
             request(
