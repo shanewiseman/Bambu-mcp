@@ -116,12 +116,19 @@ fi
 export BAMBU_MCP_CREDENTIAL_KEY_FILE="$PWD/data/credential-key.txt"
 export BAMBU_MCP_DATABASE_URL="sqlite:///$PWD/data/bambu-mcp.db"
 export BAMBU_MCP_ARTIFACT_ROOT="$PWD/artifacts"
+export BAMBU_MCP_BAMBU_CA_FILE="$PWD/certs/bambu-lab-ca.pem"
+test -r "$BAMBU_MCP_BAMBU_CA_FILE"
 bambu-mcp stdio
 ```
 
 The ignored `data/credential-key.txt` must remain stable once printer credentials
 are stored; back it up separately and never commit or regenerate it for an
 existing database.
+
+The CA path above assumes the command runs from this repository checkout. An
+installed-wheel deployment must keep an operator-managed copy of the trusted CA
+bundle and set its absolute path; certificate material is deliberately excluded
+from the wheel.
 
 See the [MCP client guide](docs/mcp-clients.md) for example configurations and
 [operator guide](docs/operator-guide.md) for LAN, Developer Mode, profiles,
