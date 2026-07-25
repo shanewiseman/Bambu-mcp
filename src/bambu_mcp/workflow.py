@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import hmac
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import Any, cast
@@ -30,6 +31,7 @@ from bambu_mcp.schemas import (
     PreparePrintRequest,
     PrinterRegistration,
     PrinterView,
+    TransformSpec,
 )
 from bambu_mcp.security import CredentialVault, canonical_digest, hash_token, issue_token, redact
 from bambu_mcp.slicer import Slicer
@@ -668,8 +670,7 @@ class WorkflowService:
                 effective = self.artifacts.transform_stl(
                     session,
                     effective.id,
-                    request.transform
-                    or __import__("bambu_mcp.schemas", fromlist=["TransformSpec"]).TransformSpec(),
+                    request.transform or TransformSpec(),
                     repair=request.repair,
                 )
                 settings = dict(job.settings)
@@ -758,7 +759,7 @@ class WorkflowService:
                 raise SafetyError("approval token has already been used")
             if as_utc(approval.expires_at) <= datetime.now(UTC):
                 raise SafetyError("approval token has expired")
-            if not __import__("hmac").compare_digest(approval.plan_digest, expected_digest):
+            if not hmac.compare_digest(approval.plan_digest, expected_digest):
                 raise SafetyError("approval is bound to a different immutable action")
             approval.used_at = datetime.now(UTC)
             self._audit(session, "approval.consume", "job", job_id, "success")
