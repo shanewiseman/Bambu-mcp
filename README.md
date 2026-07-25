@@ -150,7 +150,10 @@ disabled by default and remain approval-gated when explicitly enabled.
 
 The MQTT and FTPS protocols are reverse-engineered and can change with firmware.
 Keep the service on a trusted printer VLAN and retain the default loopback bind.
-Read the [security guide](docs/security.md) before exposing Streamable HTTP.
+Camera snapshots pass the access code to ffmpeg in its RTSPS URL, so run them
+only through the hardened Compose service on a trusted, single-tenant host; host
+and Docker administrators remain able to observe process arguments. Read the
+[security guide](docs/security.md) before exposing Streamable HTTP.
 
 ## Documentation by audience
 

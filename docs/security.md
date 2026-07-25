@@ -41,7 +41,10 @@ intent.
 - Firmware upgrade and credential retrieval/manipulation are forbidden even in
   raw mode. Raw MQTT cannot choose a topic.
 - Containers run as non-root without Linux capabilities and with
-  `no-new-privileges`. The slicer root filesystem is read-only. Compose must
+  `no-new-privileges`. The core has no PID namespace sharing override, so
+  Docker uses its private default and sibling containers cannot inspect its
+  process arguments unless deliberately joined to that namespace. The slicer
+  root filesystem is read-only. Compose must
   materialize environment-sourced secrets before the core starts, so the core
   root filesystem is not mounted read-only; all image paths are root-owned and
   non-writable to UID 10001, leaving only explicit tmpfs and data/artifact
@@ -74,6 +77,12 @@ intent.
 - The service has no user/role model; the API key is an operator-equivalent
   capability. Place per-user authorization at a gateway if needed.
 - Fernet protects at-rest values, not a compromised running process.
+- Camera capture necessarily places the percent-encoded access code in the
+  ffmpeg RTSPS input argument. The default private container PID namespace
+  limits visibility from sibling containers, but trusted host and Docker
+  administrators can still observe it. Do not use snapshots from a bare-metal
+  service or an untrusted multi-user host; rotate the printer access code after
+  suspected process observation.
 - The Bambu CA authenticates membership in the vendor PKI, not the expected
   printer identity. Network segmentation is therefore mandatory.
 - Paho reconnect is fail-closed for pending commands; automated connection

@@ -93,6 +93,15 @@ async def test_guarded_action_approval_and_cancel(
     approval = container.workflow.approve_guarded_action(job_id, "stop", {})
     cancelled = await container.workflow.cancel_job(job_id, approval.approval_token)
     assert cancelled.state is JobState.CANCELLED
+
+    event_count = len(container.workflow.job_events(job_id))
+    gateway = container.gateways._gateways[registered_printer["id"]]
+    assert isinstance(gateway, SimulatedGateway)
+    gateway.state["print"]["gcode_state"] = "FAILED"
+    monitored = await container.workflow.monitor_job(job_id)
+    assert monitored.state is JobState.CANCELLED
+    assert len(container.workflow.job_events(job_id)) == event_count
+    gateway.state["print"]["gcode_state"] = "IDLE"
     with pytest.raises(ConflictError, match="terminal"):
         container.workflow.approve_guarded_action(job_id, "stop", {})
     with pytest.raises(ConflictError, match="not complete"):

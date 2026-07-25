@@ -9,6 +9,13 @@ and LAN access code. Bambu states that Developer Mode exposes unsupported local
 MQTT, file, and streaming integrations; treat the printer LAN as a security
 boundary.
 
+Camera snapshots invoke ffmpeg with a credential-bearing RTSPS URL. Use that
+feature only through the Compose service on this dedicated host: its default
+private PID namespace limits sibling-container visibility, but host and Docker
+administrators can still inspect process arguments. Do not use snapshots from a
+bare-metal service or an untrusted multi-user host. Rotate the printer
+access code after suspected observation.
+
 Generate secrets with `bambu-mcp keygen credential` and `bambu-mcp keygen api`
 or retrieve them from a secret manager. Export them as
 `BAMBU_MCP_CREDENTIAL_KEY` and `BAMBU_MCP_API_KEY` only in the secure shell that
