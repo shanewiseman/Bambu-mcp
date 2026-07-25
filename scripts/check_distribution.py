@@ -7,10 +7,7 @@ import tarfile
 import zipfile
 from pathlib import Path, PurePosixPath
 
-ALLOWED_TOP_LEVEL = {
-    "bambu_mcp",
-    "bambu_mcp-0.1.0.dist-info",
-}
+ALLOWED_PACKAGE_ROOTS = {"bambu_mcp"}
 WHEEL_FORBIDDEN_PARTS = {"certs", "profiles", "BambuStudio", "bambu-studio"}
 BINARY_SUFFIXES = {".AppImage", ".deb", ".dll", ".dylib", ".exe", ".rpm", ".so"}
 REQUIRED_MIGRATION_FILES = {
@@ -36,8 +33,16 @@ def main() -> None:
     with zipfile.ZipFile(wheels[0]) as archive:
         names = archive.namelist()
         top_level = {name.split("/", maxsplit=1)[0] for name in names}
-        if not top_level <= ALLOWED_TOP_LEVEL:
-            fail(f"unexpected wheel roots: {sorted(top_level - ALLOWED_TOP_LEVEL)}")
+        dist_info_roots = {
+            name
+            for name in top_level
+            if name.startswith("bambu_mcp-") and name.endswith(".dist-info")
+        }
+        if len(dist_info_roots) != 1:
+            fail("expected exactly one bambu_mcp-*.dist-info wheel root")
+        allowed_roots = ALLOWED_PACKAGE_ROOTS | dist_info_roots
+        if unexpected_roots := top_level - allowed_roots:
+            fail(f"unexpected wheel roots: {sorted(unexpected_roots)}")
         if any(part in name.split("/") for name in names for part in WHEEL_FORBIDDEN_PARTS):
             fail("wheel includes Studio, certificate, or profile material")
         missing_migrations = REQUIRED_MIGRATION_FILES - set(names)

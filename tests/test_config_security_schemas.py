@@ -46,6 +46,13 @@ def test_settings_require_api_key_off_loopback_and_validate_log() -> None:
         Settings(log_level="verbose")
 
 
+def test_settings_require_import_root_when_local_imports_are_enabled(tmp_path: Path) -> None:
+    with pytest.raises(PydanticValidationError, match=r"local imports.*import root"):
+        Settings(enable_local_imports=True, import_root=None)
+    settings = Settings(enable_local_imports=True, import_root=tmp_path / "imports")
+    assert settings.import_root == tmp_path / "imports"
+
+
 def test_settings_prepare_directories_and_cache(tmp_path: Path) -> None:
     settings = Settings(
         database_url=f"sqlite:///{tmp_path / 'nested' / 'db.sqlite'}",
