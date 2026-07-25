@@ -298,10 +298,15 @@ class SidecarProcess:
 async def test_binary_version(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     binary = tmp_path / "studio"
     monkeypatch.setattr(slicer_sidecar, "BINARY", binary)
+    slicer_home = tmp_path / "slicer-home"
+    monkeypatch.setattr(slicer_sidecar, "SLICER_HOME", str(slicer_home))
+    monkeypatch.setenv("PATH", "/test/bin")
     assert not await slicer_sidecar.binary_version()
     binary.write_text("binary", encoding="utf-8")
 
     async def create(*args: Any, **kwargs: Any) -> SidecarProcess:
+        assert args == (str(binary), "--help")
+        assert kwargs["env"] == {"HOME": str(slicer_home), "PATH": "/test/bin"}
         return SidecarProcess()
 
     monkeypatch.setattr(asyncio, "create_subprocess_exec", create)
@@ -417,9 +422,13 @@ def test_sidecar_slice_success_and_process_error(
 ) -> None:
     sidecar_environment(tmp_path, monkeypatch)
     monkeypatch.setattr(slicer_sidecar, "DUAL_SMOKE_OK", True)
+    slicer_home = tmp_path / "slicer-home"
+    monkeypatch.setattr(slicer_sidecar, "SLICER_HOME", str(slicer_home))
+    monkeypatch.setenv("PATH", "/test/bin")
     current_job = "success"
 
     async def create(*args: Any, **kwargs: Any) -> SidecarProcess:
+        assert kwargs["env"] == {"HOME": str(slicer_home), "PATH": "/test/bin"}
         output = slicer_sidecar.ARTIFACT_ROOT / "work" / current_job / "output.gcode.3mf"
         output.write_bytes(make_3mf(sliced=True))
         return SidecarProcess()
