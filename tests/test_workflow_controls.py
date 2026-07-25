@@ -86,7 +86,11 @@ async def test_guarded_approval_binds_parameters_and_printer(
 
     other = container.workflow.register_printer(
         __import__("bambu_mcp.schemas", fromlist=["PrinterRegistration"]).PrinterRegistration(
-            name="Other", serial="N6OTHER123", host="192.0.2.20", access_code="12345678"
+            name="Other",
+            serial="N6OTHER123",
+            host="192.0.2.20",
+            access_code="12345678",
+            developer_mode=True,
         )
     )
     approval = container.workflow.approve_guarded_action(job_id, "temperature", params)

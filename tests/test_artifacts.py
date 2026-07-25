@@ -42,7 +42,7 @@ def test_artifact_names_kinds_and_media() -> None:
     assert media_type_for("part.3mf") == "model/3mf"
     assert media_type_for("snap.jpg") == "image/jpeg"
     assert safe_filename("part.stl") == "part.stl"
-    for invalid in ("../part.stl", "/part.stl", "", "part.obj", "a\x00.stl"):
+    for invalid in ("../part.stl", "/part.stl", r"a\b.stl", "", "part.obj", "a\x00.stl"):
         with pytest.raises(ValidationError):
             safe_filename(invalid)
 

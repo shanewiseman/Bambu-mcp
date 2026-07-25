@@ -33,11 +33,13 @@ class FakeResponse:
 
 
 class FakeHTTPClient:
-    get_response = FakeResponse({"version": "2.7.1.62"})
+    get_response = FakeResponse({"ready": True, "version": "2.7.1.62"})
     post_response = FakeResponse({"version": "2.7.1.62"})
+    last_timeout: float | None = None
 
     def __init__(self, **kwargs: Any) -> None:
         self.kwargs = kwargs
+        type(self).last_timeout = kwargs.get("timeout")
 
     async def __aenter__(self) -> FakeHTTPClient:
         return self
@@ -58,8 +60,10 @@ class FakeHTTPClient:
 @pytest.mark.asyncio
 async def test_http_slicer_ready_and_slice(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(httpx, "AsyncClient", FakeHTTPClient)
-    slicer = HttpSlicer("http://slicer/", tmp_path, version="2.7.1.62", timeout=10)
+    FakeHTTPClient.get_response = FakeResponse({"ready": True, "version": "2.7.1.62"})
+    slicer = HttpSlicer("http://slicer/", tmp_path, version="2.7.1.62", timeout=3.5)
     assert await slicer.ready()
+    assert FakeHTTPClient.last_timeout == 3.5
     output = tmp_path / "work" / "job" / "output.gcode.3mf"
     output.parent.mkdir(parents=True)
     output.write_bytes(make_3mf(sliced=True))
@@ -87,9 +91,13 @@ async def test_http_slicer_ready_and_slice(tmp_path: Path, monkeypatch: pytest.M
 async def test_http_slicer_failures(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(httpx, "AsyncClient", FakeHTTPClient)
     slicer = HttpSlicer("http://slicer", tmp_path, version="2.7.1.62", timeout=10)
-    FakeHTTPClient.get_response = FakeResponse({"version": "wrong"})
+    FakeHTTPClient.get_response = FakeResponse({"ready": True, "version": "wrong"})
+    assert not await slicer.ready()
+    FakeHTTPClient.get_response = FakeResponse({"ready": False, "version": "2.7.1.62"})
     assert not await slicer.ready()
     FakeHTTPClient.get_response = FakeResponse({"version": "2.7.1.62"})
+    assert not await slicer.ready()
+    FakeHTTPClient.get_response = FakeResponse({"ready": True, "version": "2.7.1.62"})
     FakeHTTPClient.post_response = FakeResponse({"version": "wrong"})
     with pytest.raises(SlicerError, match="unexpected version"):
         await slicer.slice(

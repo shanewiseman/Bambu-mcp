@@ -117,6 +117,8 @@ def test_registration_and_transform_schemas() -> None:
         name="X2D", serial="ABCDEF12", host="printer.local", access_code="12345678"
     )
     assert valid.host == "printer.local"
+    assert valid.developer_mode is False
+    assert valid.model_copy(update={"developer_mode": True}).developer_mode is True
     with pytest.raises(PydanticValidationError):
         PrinterRegistration(name="X", serial="ABCDEF12", host="https://bad", access_code="12345678")
     assert TransformSpec(scale=(1, 2, 3)).scale == (1, 2, 3)

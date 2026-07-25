@@ -46,10 +46,15 @@ class HttpSlicer:
 
     async def ready(self) -> bool:
         try:
-            async with httpx.AsyncClient(timeout=10) as client:
+            async with httpx.AsyncClient(timeout=self.timeout) as client:
                 response = await client.get(f"{self.base_url}/readyz")
                 payload = response.json()
-            return response.is_success and payload.get("version") == self.version
+            return (
+                response.is_success
+                and isinstance(payload, dict)
+                and payload.get("ready") is True
+                and payload.get("version") == self.version
+            )
         except (httpx.HTTPError, ValueError):
             return False
 

@@ -21,7 +21,7 @@ class PrinterRegistration(StrictModel):
     host: IPvAnyAddress | str
     access_code: str = Field(min_length=8, max_length=128)
     model: str = Field(default="X2D", min_length=2, max_length=64)
-    developer_mode: bool = True
+    developer_mode: bool = False
 
     @field_validator("host")
     @classmethod
