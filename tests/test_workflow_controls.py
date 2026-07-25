@@ -7,7 +7,7 @@ from conftest import make_3mf
 from helpers import ingest
 
 from bambu_mcp.container import Container
-from bambu_mcp.errors import ConflictError, NotFoundError, SafetyError
+from bambu_mcp.errors import ConflictError, NotFoundError, ProtocolError, SafetyError
 from bambu_mcp.gateway import SimulatedGateway
 from bambu_mcp.models import JobState
 from bambu_mcp.schemas import PreparePrintRequest, PrinterRegistration
@@ -177,7 +177,7 @@ async def test_registration_listing_status_discovery_and_operation_failure(
     gateway = container.gateways._gateways[registered_printer["id"]]
     assert isinstance(gateway, SimulatedGateway)
     gateway.fail_commands.add("pause")
-    with pytest.raises(Exception, match="rejected"):
+    with pytest.raises(ProtocolError, match="rejected"):
         await container.workflow.run_operation(
             printer_id=registered_printer["id"], operation="pause"
         )
