@@ -100,7 +100,7 @@ def create_app(container: Container) -> FastAPI:
         except SQLAlchemyError:
             database_ok = False
         artifact_ok = container.artifacts.root.is_dir() and os.access(
-            container.artifacts.root, os.W_OK
+            container.artifacts.root, os.W_OK | os.X_OK
         )
         return {
             "status": "ok" if database_ok and artifact_ok else "degraded",
