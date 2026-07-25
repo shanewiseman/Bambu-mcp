@@ -48,6 +48,18 @@ def test_http_auth_health_readiness_upload_download_and_errors(
             ).status_code
             == 401
         )
+        for scheme in ("bearer", "bEaReR"):
+            response = client.get(
+                "/api/v1/artifacts/" + "0" * 64,
+                headers={"Authorization": f"{scheme} test-api-key"},
+            )
+            assert response.status_code == 404
+        for malformed in ("bearer", "Basic test-api-key", "bearer  test-api-key"):
+            response = client.get(
+                "/api/v1/artifacts/" + "0" * 64,
+                headers={"Authorization": malformed},
+            )
+            assert response.status_code == 401
         uploaded = client.post(
             "/api/v1/artifacts",
             headers=auth(),

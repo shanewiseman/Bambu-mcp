@@ -71,7 +71,11 @@ physical print.
 ## Upgrades
 
 Read the changelog and protocol matrix diff. Back up first. Build both images,
-run CI/contract tests, and confirm the Studio source tag/commit. Apply Alembic
-migrations once. Start with writes disabled, compare read-only capability/status
-snapshots, and re-enable only after review. Firmware upgrades are performed
-outside this product and trigger a new capability/evidence review.
+run CI/contract tests, and confirm the Studio source tag/commit. Run
+`bambu-mcp init-db` once to upgrade the configured database to the migration
+head before replacing a running service. Normal service startup also applies
+the same packaged, idempotent Alembic migrations before restart recovery, so
+only one instance should start against a database during an upgrade. Start with
+writes disabled, compare read-only capability/status snapshots, and re-enable
+only after review. Firmware upgrades are performed outside this product and
+trigger a new capability/evidence review.

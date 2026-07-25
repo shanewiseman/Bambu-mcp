@@ -9,7 +9,7 @@ from bambu_mcp.models import Artifact, Job, JobState, Printer
 
 def test_recover_interrupted_jobs_and_keep_running(tmp_path: Path) -> None:
     database = Database(f"sqlite:///{tmp_path / 'db.sqlite'}")
-    database.create_schema()
+    database.upgrade_schema()
     with database.session() as session:
         printer = Printer(
             id="p",
@@ -48,10 +48,10 @@ def test_sqlite_database_is_owner_only(tmp_path: Path) -> None:
     database_path = tmp_path / "state.sqlite"
     database = Database(f"sqlite:///{database_path}")
 
-    database.create_schema()
+    database.upgrade_schema()
     assert stat.S_IMODE(database_path.stat().st_mode) == 0o600
 
     database_path.chmod(0o644)
-    database.create_schema()
+    database.upgrade_schema()
     assert stat.S_IMODE(database_path.stat().st_mode) == 0o600
     database.engine.dispose()
