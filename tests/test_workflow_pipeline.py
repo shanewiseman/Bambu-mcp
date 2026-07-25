@@ -5,6 +5,7 @@ from typing import Any
 
 import pytest
 from conftest import make_3mf, make_stl
+from helpers import ingest
 from sqlalchemy import select
 
 from bambu_mcp.container import Container
@@ -19,11 +20,6 @@ from bambu_mcp.schemas import (
     TransformSpec,
 )
 from bambu_mcp.slicer import FakeSlicer
-
-
-def ingest(container: Container, filename: str, content: bytes) -> str:
-    with container.database.session() as session:
-        return container.artifacts.ingest_bytes(session, filename, content).id
 
 
 def request(

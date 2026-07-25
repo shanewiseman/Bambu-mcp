@@ -76,6 +76,13 @@ class FTPSClient:
             client.close()
             raise ProtocolError("implicit FTPS connection failed") from exc
 
+    @staticmethod
+    def _disconnect(client: ImplicitFTPTLS) -> None:
+        try:
+            client.quit()
+        except (OSError, ftplib.Error):
+            client.close()
+
     def upload(self, name: str, source: BinaryIO) -> None:
         filename = remote_filename(name)
         client = self._connect()
@@ -90,10 +97,7 @@ class FTPSClient:
         except (OSError, ftplib.Error) as exc:
             raise ProtocolError("FTPS upload failed") from exc
         finally:
-            try:
-                client.quit()
-            except (OSError, ftplib.Error):
-                client.close()
+            self._disconnect(client)
 
     def list_files(self) -> list[str]:
         client = self._connect()
@@ -102,7 +106,7 @@ class FTPSClient:
         except (OSError, ftplib.Error) as exc:
             raise ProtocolError("FTPS listing failed") from exc
         finally:
-            client.close()
+            self._disconnect(client)
 
     def delete(self, name: str) -> None:
         filename = remote_filename(name)
@@ -112,4 +116,4 @@ class FTPSClient:
         except (OSError, ftplib.Error) as exc:
             raise ProtocolError("FTPS delete failed") from exc
         finally:
-            client.close()
+            self._disconnect(client)

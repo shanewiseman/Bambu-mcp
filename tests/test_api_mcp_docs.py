@@ -11,9 +11,9 @@ from typing import Any
 import pytest
 from conftest import make_3mf, make_stl
 from fastapi.testclient import TestClient
+from helpers import ingest
 from mcp import ClientSession
 from mcp.client.stdio import StdioServerParameters, stdio_client
-from test_workflow_pipeline import ingest
 
 from bambu_mcp import docs as docs_module
 from bambu_mcp.api import create_app
