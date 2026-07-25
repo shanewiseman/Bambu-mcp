@@ -123,6 +123,10 @@ class MQTTCommandClient:
     ) -> CommandResult:
         if not PROTOCOL_NAME.fullmatch(family) or not PROTOCOL_NAME.fullmatch(command):
             raise ValidationError("invalid protocol family or command")
+        reserved_parameters = {"sequence_id", "command"}.intersection(parameters or {})
+        if reserved_parameters:
+            names = ", ".join(sorted(reserved_parameters))
+            raise ValidationError(f"parameters contain reserved MQTT envelope fields: {names}")
         sequence_id = self.sequence.next()
         payload = {
             family: {
@@ -210,15 +214,18 @@ class PahoTransport:
         access_code: str,
         ca_file: Path,
         receiver: Callable[[str, bytes], Coroutine[Any, Any, None]],
+        disconnect_callback: Callable[[], None],
     ) -> None:
         self.host = host
         self.serial = serial
         self.receiver = receiver
+        self.disconnect_callback = disconnect_callback
         self.loop: asyncio.AbstractEventLoop | None = None
         self.client = mqtt.Client(CallbackAPIVersion.VERSION2)
         self.client.username_pw_set("bblp", access_code)
         self.client.tls_set_context(verified_tls_context(ca_file))
         self.client.on_connect = self._on_connect
+        self.client.on_disconnect = self._on_disconnect
         self.client.on_message = self._on_message
 
     async def connect(self) -> None:
@@ -261,6 +268,18 @@ class PahoTransport:
                 self.loop,
             )
             future.add_done_callback(self._receiver_done)
+
+    def _on_disconnect(
+        self,
+        client: mqtt.Client,
+        userdata: Any,
+        disconnect_flags: mqtt.DisconnectFlags,
+        reason_code: ReasonCode,
+        properties: Properties | None,
+    ) -> None:
+        del client, userdata, disconnect_flags, reason_code, properties
+        if self.loop:
+            self.loop.call_soon_threadsafe(self.disconnect_callback)
 
     @staticmethod
     def _receiver_done(future: Future[None]) -> None:

@@ -128,12 +128,17 @@ class LanGateway:
             access_code=access_code,
             ca_file=ca_file,
             receiver=self._receive,
+            disconnect_callback=self._disconnected,
         )
         self.mqtt = MQTTCommandClient(serial, self.transport, ack_timeout=ack_timeout)
         self.connected = False
 
     async def _receive(self, topic: str, payload: bytes) -> None:
         await self.mqtt.receive(topic, payload)
+
+    def _disconnected(self) -> None:
+        self.connected = False
+        self.mqtt.disconnected()
 
     async def _ensure_connected(self) -> None:
         if not self.connected:
