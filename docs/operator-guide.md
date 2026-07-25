@@ -15,7 +15,9 @@ or retrieve them from a secret manager. Export them as
 runs Compose. Compose 2.23.1 or newer materializes mode-0400 secret files owned
 by the non-root core UID; the values do not enter the container environment.
 Store both values separately for recreation and recovery, then clear the shell
-when deployment finishes. Never reuse a printer access code as an API key.
+when deployment finishes. Secret files are read when the application is created;
+replace the mounted value and restart or redeploy the service to rotate a key.
+Never reuse a printer access code as an API key.
 
 ## Profiles and slicing
 

@@ -3,6 +3,8 @@ from __future__ import annotations
 import asyncio
 import io
 import runpy
+import tarfile
+import zipfile
 from pathlib import Path
 from types import SimpleNamespace
 from typing import Any
@@ -16,6 +18,15 @@ from bambu_mcp.gateway import LanGateway
 from bambu_mcp.protocol import ftps
 from bambu_mcp.protocol.ftps import FTPSClient, ImplicitFTPTLS
 from bambu_mcp.schemas import CommandResult
+
+DISTRIBUTION_CHECKER = Path(__file__).parents[1] / "scripts" / "check_distribution.py"
+DISTRIBUTION_MIGRATION_FILES = {
+    "bambu_mcp/migrations/__init__.py",
+    "bambu_mcp/migrations/env.py",
+    "bambu_mcp/migrations/script.py.mako",
+    "bambu_mcp/migrations/versions/__init__.py",
+    "bambu_mcp/migrations/versions/0001_initial_schema.py",
+}
 
 
 def test_implicit_ftps_wraps_control_socket_before_welcome(
@@ -308,6 +319,71 @@ async def test_lan_gateway_connects_once_and_delegates_protocols(
     await gateway.close()
     assert gateway.transport.close_count == 1
     assert gateway.connected is False
+
+
+def make_distribution_fixture(
+    root: Path,
+    *,
+    dist_info_roots: tuple[str, ...],
+    extra_wheel_roots: tuple[str, ...] = (),
+) -> None:
+    root.mkdir()
+    with zipfile.ZipFile(root / "bambu_mcp-test-py3-none-any.whl", "w") as archive:
+        for name in DISTRIBUTION_MIGRATION_FILES:
+            archive.writestr(name, "")
+        for name in dist_info_roots:
+            archive.writestr(f"{name}/METADATA", "Name: bambu-mcp\n")
+        for name in extra_wheel_roots:
+            archive.writestr(f"{name}/payload", "unexpected")
+
+    payload = b"[build-system]\n"
+    info = tarfile.TarInfo("bambu_mcp-test/pyproject.toml")
+    info.size = len(payload)
+    with tarfile.open(root / "bambu_mcp-test.tar.gz", "w:gz") as archive:
+        archive.addfile(info, io.BytesIO(payload))
+
+
+def test_distribution_checker_accepts_version_agnostic_dist_info(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    release = tmp_path / "release"
+    make_distribution_fixture(release, dist_info_roots=("bambu_mcp-9.9.9.dist-info",))
+    monkeypatch.setattr("sys.argv", ["check_distribution.py", str(release)])
+
+    runpy.run_path(str(DISTRIBUTION_CHECKER), run_name="__main__")
+
+    assert "validated bambu_mcp-test-py3-none-any.whl" in capsys.readouterr().out
+
+
+@pytest.mark.parametrize(
+    ("dist_info_roots", "extra_wheel_roots", "expected"),
+    [
+        ((), (), "exactly one"),
+        (
+            ("bambu_mcp-1.0.dist-info", "bambu_mcp-2.0.dist-info"),
+            (),
+            "exactly one",
+        ),
+        (("bambu_mcp-1.0.dist-info",), ("unexpected",), "unexpected wheel roots"),
+    ],
+)
+def test_distribution_checker_rejects_ambiguous_or_unrelated_roots(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    dist_info_roots: tuple[str, ...],
+    extra_wheel_roots: tuple[str, ...],
+    expected: str,
+) -> None:
+    release = tmp_path / "release"
+    make_distribution_fixture(
+        release,
+        dist_info_roots=dist_info_roots,
+        extra_wheel_roots=extra_wheel_roots,
+    )
+    monkeypatch.setattr("sys.argv", ["check_distribution.py", str(release)])
+
+    with pytest.raises(SystemExit, match=expected):
+        runpy.run_path(str(DISTRIBUTION_CHECKER), run_name="__main__")
 
 
 def test_cli_runtime_commands_and_module_entrypoint(

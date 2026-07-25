@@ -87,6 +87,28 @@ def test_http_auth_health_readiness_upload_download_and_errors(
         assert invalid.status_code == 422
 
 
+def test_http_auth_snapshots_secret_at_app_creation(container: Container, tmp_path: Path) -> None:
+    secret = tmp_path / "api-key"
+    secret.write_text("initial-key\n", encoding="utf-8")
+    container.settings.api_key = None
+    container.settings.api_key_file = secret
+    app = create_app(container)
+    secret.write_text("rotated-key\n", encoding="utf-8")
+
+    with TestClient(app) as client:
+        accepted = client.get(
+            "/api/v1/artifacts/" + "0" * 64,
+            headers={"Authorization": "Bearer initial-key"},
+        )
+        rejected = client.get(
+            "/api/v1/artifacts/" + "0" * 64,
+            headers={"Authorization": "Bearer rotated-key"},
+        )
+
+    assert accepted.status_code == 404
+    assert rejected.status_code == 401
+
+
 def test_health_requires_write_and_traverse_access(
     container: Container, monkeypatch: pytest.MonkeyPatch
 ) -> None:
