@@ -1,0 +1,93 @@
+name: bambu-mcp
+services:
+  bambu-mcp:
+    build:
+      context: .
+      dockerfile: docker/core.Dockerfile
+    restart: unless-stopped
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    tmpfs:
+      - /tmp:rw,noexec,nosuid,size=256m
+    ports:
+      - "127.0.0.1:8000:8000"
+    environment:
+      BAMBU_MCP_BIND_HOST: 0.0.0.0
+      BAMBU_MCP_DATABASE_URL: sqlite:////data/bambu-mcp.db
+      BAMBU_MCP_ARTIFACT_ROOT: /artifacts
+      BAMBU_MCP_IMPORT_ROOT: /imports
+      BAMBU_MCP_PROTOCOL_MATRIX_PATH: /app/docs/protocol-capability-matrix.md
+      BAMBU_MCP_BAMBU_CA_FILE: /app/certs/bambu-lab-ca.pem
+      BAMBU_MCP_API_KEY_FILE: /run/secrets/api_key
+      BAMBU_MCP_CREDENTIAL_KEY_FILE: /run/secrets/credential_key
+      BAMBU_MCP_SLICER_URL: http://bambu-slicer:8080
+      BAMBU_MCP_PUBLIC_BASE_URL: http://127.0.0.1:8000
+      BAMBU_MCP_ALLOW_UNVERIFIED_X2D_WRITES: "false"
+      BAMBU_MCP_ENABLE_EXPERIMENTAL_TOOLS: "false"
+      BAMBU_MCP_ENABLE_LOCAL_IMPORTS: "false"
+    secrets:
+      - source: api_key
+        target: api_key
+        uid: "10001"
+        gid: "10001"
+        mode: 0400
+      - source: credential_key
+        target: credential_key
+        uid: "10001"
+        gid: "10001"
+        mode: 0400
+    volumes:
+      - artifacts:/artifacts
+      - data:/data
+      - ./imports:/imports:ro
+    networks: [printer-control, slicer-internal]
+    depends_on:
+      bambu-slicer:
+        condition: service_healthy
+    healthcheck:
+      test: [CMD, python, -c, "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/healthz', timeout=3)"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 15s
+
+  bambu-slicer:
+    build:
+      context: .
+      dockerfile: docker/slicer.Dockerfile
+      args:
+        BAMBU_STUDIO_REF: v02.07.01.62
+        BAMBU_STUDIO_COMMIT: 42d319c6692fa8e64790fddf0cdaafd2a4254bcc
+    restart: unless-stopped
+    read_only: true
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    tmpfs:
+      - /tmp:rw,noexec,nosuid,size=2g
+    environment:
+      BAMBU_DUAL_NOZZLE_SMOKE_OK: "false"
+    volumes:
+      - artifacts:/artifacts
+      - ./profiles:/profiles:ro
+    networks: [slicer-internal]
+    healthcheck:
+      test: [CMD, python, -c, "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8080/healthz', timeout=3)"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 60s
+
+secrets:
+  api_key:
+    environment: BAMBU_MCP_API_KEY
+  credential_key:
+    environment: BAMBU_MCP_CREDENTIAL_KEY
+
+volumes:
+  artifacts:
+  data:
+
+networks:
+  printer-control:
+  slicer-internal:
+    internal: true

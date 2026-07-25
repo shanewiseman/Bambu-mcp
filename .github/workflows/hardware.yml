@@ -1,0 +1,40 @@
+name: Hardware validation
+
+on:
+  workflow_dispatch:
+    inputs:
+      evidence_stage:
+        description: Stage from docs/hardware-validation.md
+        required: true
+        type: choice
+        options:
+          - read-only-capture
+          - lights
+          - pause-resume-existing-print
+          - upload-without-start
+          - single-nozzle-print
+          - dual-nozzle-fts
+
+permissions:
+  contents: read
+
+jobs:
+  operator-gate:
+    runs-on: [self-hosted, bambu-hardware]
+    environment: hardware-validation
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - name: Enforce fixture and backup evidence
+        env:
+          FIXTURE_SERIAL: ${{ vars.BAMBU_FIXTURE_SERIAL }}
+          BACKUP_EVIDENCE: ${{ vars.BAMBU_BACKUP_EVIDENCE }}
+        run: |
+          test -n "${FIXTURE_SERIAL}"
+          test -n "${BACKUP_EVIDENCE}"
+          printf 'Requested stage: %s\nFixture: configured\nBackup evidence: configured\n' \
+            '${{ inputs.evidence_stage }}'
+      - name: Stop for documented operator execution
+        run: |
+          echo "Hardware mutations are intentionally not automated in ordinary CI."
+          echo "Execute and record this stage using docs/hardware-validation.md."

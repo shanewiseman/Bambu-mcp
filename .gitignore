@@ -1,0 +1,17 @@
+.coverage
+coverage.xml
+.env
+.mypy_cache/
+.pytest_cache/
+.ruff_cache/
+.venv/
+__pycache__/
+*.egg-info/
+*.py[cod]
+artifacts/
+build/
+data/
+dist/
+htmlcov/
+secrets/*.txt
+site/
