@@ -104,6 +104,11 @@ async def test_mqtt_command_success_failure_and_payload() -> None:
 async def test_mqtt_command_timeout_publish_error_and_validation() -> None:
     transport = FakeTransport()
     client = MQTTCommandClient("SERIAL", transport, ack_timeout=0.001)
+    for reserved in ("sequence_id", "command"):
+        with pytest.raises(ValidationError, match="reserved MQTT envelope"):
+            await client.command("print", "pause", {reserved: "tampered"})
+    assert transport.published == []
+    assert client.sequence.next() == "1"
     with pytest.raises(ProtocolError, match="acknowledge"):
         await client.command("print", "pause")
     transport.error = RuntimeError("publish failed")
@@ -183,6 +188,7 @@ def test_paho_on_message_observes_receiver_future(monkeypatch: pytest.MonkeyPatc
         access_code="12345678",
         ca_file=Path("certs/bambu-lab-ca.pem"),
         receiver=receiver,
+        disconnect_callback=lambda: None,
     )
     message = SimpleNamespace(topic="device/SERIAL/report", payload=b"{}")
     transport._on_message(transport.client, None, message)
@@ -206,6 +212,39 @@ def test_paho_on_message_observes_receiver_future(monkeypatch: pytest.MonkeyPatc
     assert observed == [submitted]
 
 
+@pytest.mark.asyncio
+async def test_paho_disconnect_fails_pending_ack_from_callback_thread() -> None:
+    client: MQTTCommandClient
+
+    async def receiver(topic: str, payload: bytes) -> None:
+        del topic, payload
+
+    transport = PahoTransport(
+        host="192.0.2.10",
+        serial="SERIAL",
+        access_code="12345678",
+        ca_file=Path("certs/bambu-lab-ca.pem"),
+        receiver=receiver,
+        disconnect_callback=lambda: client.disconnected(),
+    )
+    client = MQTTCommandClient("SERIAL", transport, ack_timeout=0.1)
+    transport.loop = asyncio.get_running_loop()
+    pending = client.acks.register("1")
+
+    await asyncio.to_thread(
+        transport._on_disconnect,
+        transport.client,
+        None,
+        SimpleNamespace(),
+        SimpleNamespace(),
+        None,
+    )
+    await asyncio.sleep(0)
+
+    with pytest.raises(ProtocolError, match="connection was lost"):
+        await pending
+
+
 def test_verified_tls_context_uses_ca() -> None:
     context = verified_tls_context(Path("certs/bambu-lab-ca.pem"))
     assert context.verify_mode == ssl.CERT_REQUIRED
@@ -226,6 +265,7 @@ async def test_paho_transport_topic_and_publish_results(monkeypatch: pytest.Monk
         access_code="12345678",
         ca_file=Path("certs/bambu-lab-ca.pem"),
         receiver=receiver,
+        disconnect_callback=lambda: None,
     )
     with pytest.raises(ProtocolError, match="outside"):
         await transport.publish("arbitrary/topic", b"{}", 1)
