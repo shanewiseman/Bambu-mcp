@@ -20,25 +20,28 @@ def camera_url(host: str, access_code: str) -> str:
 
 
 async def snapshot(host: str, access_code: str, *, timeout_seconds: float = 15) -> bytes:
-    process = await asyncio.create_subprocess_exec(
-        "ffmpeg",
-        "-nostdin",
-        "-loglevel",
-        "error",
-        "-rtsp_transport",
-        "tcp",
-        "-i",
-        camera_url(host, access_code),
-        "-frames:v",
-        "1",
-        "-f",
-        "image2pipe",
-        "-vcodec",
-        "mjpeg",
-        "pipe:1",
-        stdout=asyncio.subprocess.PIPE,
-        stderr=asyncio.subprocess.PIPE,
-    )
+    try:
+        process = await asyncio.create_subprocess_exec(
+            "ffmpeg",
+            "-nostdin",
+            "-loglevel",
+            "error",
+            "-rtsp_transport",
+            "tcp",
+            "-i",
+            camera_url(host, access_code),
+            "-frames:v",
+            "1",
+            "-f",
+            "image2pipe",
+            "-vcodec",
+            "mjpeg",
+            "pipe:1",
+            stdout=asyncio.subprocess.PIPE,
+            stderr=asyncio.subprocess.PIPE,
+        )
+    except OSError as exc:
+        raise ProtocolError("camera snapshot process could not start") from exc
     try:
         stdout, stderr = await asyncio.wait_for(process.communicate(), timeout_seconds)
     except TimeoutError as exc:

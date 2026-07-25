@@ -165,6 +165,21 @@ class FakeProcess:
 
 
 @pytest.mark.asyncio
+async def test_snapshot_wraps_process_launch_failure(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    async def unavailable(*args: Any, **kwargs: Any) -> FakeProcess:
+        raise FileNotFoundError("ffmpeg is unavailable")
+
+    monkeypatch.setattr(asyncio, "create_subprocess_exec", unavailable)
+
+    with pytest.raises(ProtocolError, match="could not start") as caught:
+        await camera.snapshot("192.0.2.1", "12345678")
+
+    assert isinstance(caught.value.__cause__, FileNotFoundError)
+
+
+@pytest.mark.asyncio
 async def test_snapshot_success_error_and_timeout(monkeypatch: pytest.MonkeyPatch) -> None:
     process = FakeProcess()
 
