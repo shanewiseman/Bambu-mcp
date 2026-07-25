@@ -190,16 +190,31 @@ async def test_simulated_gateway_and_pool(tmp_path: Path) -> None:
         host="192.0.2.1",
         encrypted_access_code="not-used",
     )
-    created: list[SimulatedGateway] = []
+    created: list[tuple[str, TrackingGateway]] = []
 
-    def factory(record: Printer, access_code: str) -> SimulatedGateway:
+    class TrackingGateway(SimulatedGateway):
+        def __init__(self) -> None:
+            super().__init__()
+            self.close_calls = 0
+
+        async def close(self) -> None:
+            self.close_calls += 1
+
+    def factory(record: Printer, access_code: str) -> TrackingGateway:
         assert record is printer
-        assert access_code == "code"
-        created.append(SimulatedGateway())
-        return created[-1]
+        gateway = TrackingGateway()
+        created.append((access_code, gateway))
+        return gateway
 
     pool = GatewayPool(factory)
-    assert pool.get(printer, "code") is pool.get(printer, "code")
+    first = await pool.get(printer, "code")
+    assert first is await pool.get(printer, "code")
     assert len(created) == 1
+    rotated = await pool.get(printer, "rotated-code")
+    assert rotated is not first
+    assert [access_code for access_code, _gateway in created] == ["code", "rotated-code"]
+    assert created[0][1].close_calls == 1
     await pool.close()
     assert pool._gateways == {}
+    assert pool._credential_digests == {}
+    assert created[1][1].close_calls == 1
