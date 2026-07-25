@@ -1,4 +1,4 @@
-"""Fail if the independently distributed Python environment contains copyleft."""
+"""Fail if the independent Python environment contains a GPL or AGPL label."""
 
 from __future__ import annotations
 

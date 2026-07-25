@@ -221,25 +221,65 @@ class PahoTransport:
         ca_file: Path,
         receiver: Callable[[str, bytes], Coroutine[Any, Any, None]],
         disconnect_callback: Callable[[], None],
+        connect_timeout: float = 15,
     ) -> None:
         self.host = host
         self.serial = serial
         self.receiver = receiver
         self.disconnect_callback = disconnect_callback
+        self.connect_timeout = connect_timeout
         self.loop: asyncio.AbstractEventLoop | None = None
+        self._connect_future: asyncio.Future[None] | None = None
+        self._subscription_mid: int | None = None
+        self._ready = threading.Event()
         self.client = mqtt.Client(CallbackAPIVersion.VERSION2)
         self.client.username_pw_set("bblp", access_code)
         self.client.tls_set_context(verified_tls_context(ca_file))
         self.client.on_connect = self._on_connect
+        self.client.on_subscribe = self._on_subscribe
         self.client.on_disconnect = self._on_disconnect
         self.client.on_message = self._on_message
 
     async def connect(self) -> None:
         self.loop = asyncio.get_running_loop()
-        await asyncio.to_thread(self.client.connect, self.host, 8883, 60)
-        self.client.loop_start()
+        self._ready.clear()
+        future = self.loop.create_future()
+        self._connect_future = future
+        loop_started = False
+        ready = False
+        try:
+            result = await asyncio.to_thread(self.client.connect, self.host, 8883, 60)
+            if result != mqtt.MQTT_ERR_SUCCESS:
+                raise ProtocolError(f"MQTT connect failed with code {result}")
+            result = self.client.loop_start()
+            if result != mqtt.MQTT_ERR_SUCCESS:
+                raise ProtocolError(f"MQTT network loop failed with code {result}")
+            loop_started = True
+            try:
+                await asyncio.wait_for(future, timeout=self.connect_timeout)
+            except TimeoutError as exc:
+                raise ProtocolError("MQTT connection handshake timed out") from exc
+            ready = True
+        finally:
+            self._connect_future = None
+            if not ready:
+                await self._cleanup_failed_connect(loop_started=loop_started)
+
+    async def _cleanup_failed_connect(self, *, loop_started: bool) -> None:
+        self._ready.clear()
+        try:
+            await asyncio.to_thread(self.client.disconnect)
+        except Exception:
+            LOGGER.warning("failed to disconnect after MQTT connection error", exc_info=True)
+        if loop_started:
+            try:
+                await asyncio.to_thread(self.client.loop_stop)
+            except Exception:
+                LOGGER.warning("failed to stop MQTT loop after connection error", exc_info=True)
 
     async def close(self) -> None:
+        self._ready.clear()
+        self._subscription_mid = None
         try:
             await asyncio.to_thread(self.client.disconnect)
         finally:
@@ -248,6 +288,8 @@ class PahoTransport:
     async def publish(self, topic: str, payload: bytes, qos: int) -> None:
         if topic != f"device/{self.serial}/request":
             raise ProtocolError("publishing outside the printer request topic is forbidden")
+        if not self._ready.is_set():
+            raise ProtocolError("MQTT connection is not ready")
         result = self.client.publish(topic, payload, qos=qos)
         if result.rc != mqtt.MQTT_ERR_SUCCESS:
             raise ProtocolError(f"MQTT publish failed with code {result.rc}")
@@ -264,9 +306,49 @@ class PahoTransport:
         properties: Properties | None,
     ) -> None:
         del userdata, flags, properties
+        self._ready.clear()
+        self._subscription_mid = None
         if reason_code.is_failure:
+            self._signal_connection(ProtocolError(f"MQTT connection rejected: {reason_code}"))
             return
-        client.subscribe(f"device/{self.serial}/report", qos=1)
+        result, message_id = client.subscribe(f"device/{self.serial}/report", qos=1)
+        if result != mqtt.MQTT_ERR_SUCCESS:
+            self._signal_connection(
+                ProtocolError(f"MQTT report subscription failed with code {result}")
+            )
+            return
+        self._subscription_mid = message_id
+
+    def _on_subscribe(
+        self,
+        client: mqtt.Client,
+        userdata: Any,
+        message_id: int,
+        reason_codes: list[ReasonCode],
+        properties: Properties | None,
+    ) -> None:
+        del client, userdata, properties
+        if message_id != self._subscription_mid:
+            return
+        self._subscription_mid = None
+        if not reason_codes or any(reason.is_failure for reason in reason_codes):
+            self._signal_connection(ProtocolError("MQTT report subscription was rejected"))
+            return
+        self._ready.set()
+        self._signal_connection(None)
+
+    def _signal_connection(self, error: ProtocolError | None) -> None:
+        if self.loop:
+            self.loop.call_soon_threadsafe(self._complete_connection, error)
+
+    def _complete_connection(self, error: ProtocolError | None) -> None:
+        future = self._connect_future
+        if future is None or future.done():
+            return
+        if error is None:
+            future.set_result(None)
+        else:
+            future.set_exception(error)
 
     def _on_message(self, client: mqtt.Client, userdata: Any, message: mqtt.MQTTMessage) -> None:
         del client, userdata
@@ -286,6 +368,9 @@ class PahoTransport:
         properties: Properties | None,
     ) -> None:
         del client, userdata, disconnect_flags, reason_code, properties
+        self._ready.clear()
+        self._subscription_mid = None
+        self._signal_connection(ProtocolError("MQTT disconnected before becoming ready"))
         if self.loop:
             self.loop.call_soon_threadsafe(self.disconnect_callback)
 
