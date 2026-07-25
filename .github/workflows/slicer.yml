@@ -1,0 +1,30 @@
+name: Slicer source build
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 180
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build pinned AGPL sidecar from corresponding source
+        run: docker build --file docker/slicer.Dockerfile --tag bambu-slicer:ci .
+      - name: Record source and image identity
+        run: |
+          mkdir -p build/evidence
+          docker create --name bambu-slicer-evidence bambu-slicer:ci
+          docker cp bambu-slicer-evidence:/opt/bambu-studio/SOURCE_COMMIT \
+            build/evidence/BAMBU_STUDIO_COMMIT
+          docker rm bambu-slicer-evidence
+          docker image inspect bambu-slicer:ci > build/evidence/slicer-image.json
+      - uses: actions/upload-artifact@v4
+        with:
+          name: slicer-source-build-evidence
+          path: build/evidence/
+          if-no-files-found: error
+          retention-days: 30
