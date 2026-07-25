@@ -43,7 +43,7 @@ def artifact_kind(filename: str) -> str:
 
 def safe_filename(filename: str) -> str:
     name = Path(filename).name
-    if name != filename or name in {"", ".", ".."} or "\x00" in name:
+    if name != filename or name in {"", ".", ".."} or "\\" in name or "\x00" in name:
         raise ValidationError("filename must be a plain basename")
     artifact_kind(name)
     return name

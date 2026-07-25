@@ -46,7 +46,7 @@ class Printer(Base):
     model: Mapped[str] = mapped_column(String(64), default="X2D")
     firmware: Mapped[str | None] = mapped_column(String(64), nullable=True)
     encrypted_access_code: Mapped[str] = mapped_column(Text)
-    developer_mode: Mapped[bool] = mapped_column(Boolean, default=True)
+    developer_mode: Mapped[bool] = mapped_column(Boolean, default=False)
     hardware_verified: Mapped[bool] = mapped_column(Boolean, default=False)
     capabilities: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict)
     state: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict)

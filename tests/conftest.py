@@ -77,5 +77,6 @@ def registered_printer(container: Container) -> dict[str, Any]:
             host="192.0.2.10",
             access_code="12345678",
             model="X2D",
+            developer_mode=True,
         )
     ).model_dump(mode="json")
