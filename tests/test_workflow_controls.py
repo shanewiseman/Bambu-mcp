@@ -23,6 +23,35 @@ async def running_job(container: Container, printer_id: str) -> str:
     return prepared.id
 
 
+@pytest.mark.parametrize(
+    ("name", "serial"),
+    [
+        ("Workshop X2D", "N6DIFFERENT123"),
+        ("Different X2D", "N6TEST123456"),
+    ],
+)
+def test_register_printer_translates_unique_constraint_conflicts(
+    container: Container,
+    registered_printer: dict[str, Any],
+    name: str,
+    serial: str,
+) -> None:
+    with pytest.raises(ConflictError, match="name or serial"):
+        container.workflow.register_printer(
+            PrinterRegistration(
+                name=name,
+                serial=serial,
+                host="192.0.2.30",
+                access_code="12345678",
+                developer_mode=True,
+            )
+        )
+
+    assert [printer.id for printer in container.workflow.list_printers()] == [
+        registered_printer["id"]
+    ]
+
+
 @pytest.mark.asyncio
 async def test_pause_resume_diagnose_and_monitor(
     container: Container, registered_printer: dict[str, Any]
@@ -40,7 +69,11 @@ async def test_pause_resume_diagnose_and_monitor(
 
     gateway = container.gateways._gateways[registered_printer["id"]]
     assert isinstance(gateway, SimulatedGateway)
+    gateway.state["print"]["gcode_state"] = "IDLE"
+    assert (await container.workflow.monitor_job(job_id)).state is JobState.RUNNING
     gateway.state["print"]["gcode_state"] = "PAUSE"
+    assert (await container.workflow.monitor_job(job_id)).state is JobState.PAUSED
+    gateway.state["print"]["gcode_state"] = "IDLE"
     assert (await container.workflow.monitor_job(job_id)).state is JobState.PAUSED
     gateway.state["print"]["gcode_state"] = "RUNNING"
     assert (await container.workflow.monitor_job(job_id)).state is JobState.RUNNING
