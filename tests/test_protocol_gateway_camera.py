@@ -192,6 +192,20 @@ async def test_snapshot_success_error_and_timeout(monkeypatch: pytest.MonkeyPatc
 
 
 @pytest.mark.asyncio
+async def test_simulated_gateway_snapshots_command_parameters() -> None:
+    gateway = SimulatedGateway()
+    parameters = {"nested": {"value": 1}}
+
+    result = await gateway.command("print", "custom", parameters)
+    parameters["nested"]["value"] = 2
+    parameters["added"] = True
+
+    expected = {"nested": {"value": 1}}
+    assert gateway.commands[-1][2] == expected
+    assert result.payload["parameters"] == expected
+
+
+@pytest.mark.asyncio
 async def test_simulated_gateway_and_pool(tmp_path: Path) -> None:
     gateway = SimulatedGateway(fail_commands={"bad"})
     assert (await gateway.status())["print"]["gcode_state"] == "IDLE"
