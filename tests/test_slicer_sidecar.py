@@ -17,12 +17,12 @@ from bambu_mcp.slicer import FakeSlicer, HttpSlicer
 
 
 class FakeResponse:
-    def __init__(self, payload: dict[str, Any], status_code: int = 200) -> None:
+    def __init__(self, payload: Any, status_code: int = 200) -> None:
         self.payload = payload
         self.status_code = status_code
         self.is_success = status_code < 400
 
-    def json(self) -> dict[str, Any]:
+    def json(self) -> Any:
         return self.payload
 
     def raise_for_status(self) -> None:
@@ -98,6 +98,16 @@ async def test_http_slicer_failures(tmp_path: Path, monkeypatch: pytest.MonkeyPa
     FakeHTTPClient.get_response = FakeResponse({"version": "2.7.1.62"})
     assert not await slicer.ready()
     FakeHTTPClient.get_response = FakeResponse({"ready": True, "version": "2.7.1.62"})
+    for invalid_payload in ([], "not an object"):
+        FakeHTTPClient.post_response = FakeResponse(invalid_payload)
+        with pytest.raises(SlicerError, match="invalid response"):
+            await slicer.slice(
+                job_id="job",
+                artifact_id="a" * 64,
+                filename="part.stl",
+                kind="stl",
+                settings=SliceSettings(),
+            )
     FakeHTTPClient.post_response = FakeResponse({"version": "wrong"})
     with pytest.raises(SlicerError, match="unexpected version"):
         await slicer.slice(
@@ -175,6 +185,44 @@ def sidecar_environment(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None
     source.write_bytes(b"stl")
     monkeypatch.setattr(slicer_sidecar, "ARTIFACT_ROOT", artifacts)
     monkeypatch.setattr(slicer_sidecar, "PROFILE_ROOT", profiles)
+
+
+@pytest.mark.parametrize(
+    ("layout", "expected"),
+    (
+        ("work-root-symlink", "unsafe work directory"),
+        ("job-file", "File exists"),
+        ("stale-directory", "unexpected directory"),
+    ),
+)
+def test_sidecar_rejects_unsafe_workspace_layouts(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, layout: str, expected: str
+) -> None:
+    sidecar_environment(tmp_path, monkeypatch)
+    monkeypatch.setattr(slicer_sidecar, "DUAL_SMOKE_OK", True)
+    work_root = slicer_sidecar.ARTIFACT_ROOT / "work"
+    if layout == "work-root-symlink":
+        outside = tmp_path / "outside"
+        outside.mkdir()
+        work_root.symlink_to(outside, target_is_directory=True)
+    elif layout == "job-file":
+        work_root.mkdir()
+        (work_root / "job").write_bytes(b"not a directory")
+    else:
+        stale = work_root / "job" / "source.stl"
+        stale.mkdir(parents=True)
+    payload = {
+        "job_id": "job",
+        "artifact_id": "a" * 64,
+        "filename": "part.stl",
+        "kind": "stl",
+        "settings": SliceSettings().model_dump(mode="json"),
+    }
+    with TestClient(slicer_sidecar.app) as client:
+        response = client.post("/slice", json=payload)
+
+    assert response.status_code == 422
+    assert expected in response.text
 
 
 def test_sidecar_paths_and_command(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
@@ -296,6 +344,22 @@ def test_sidecar_slice_success_and_process_error(
         assert stat.S_IMODE(work.stat().st_mode) == 0o2770
         assert stat.S_IMODE((work / "source.stl").stat().st_mode) == 0o640
         assert stat.S_IMODE((work / "output.gcode.3mf").stat().st_mode) == 0o640
+
+        (work / "source.stl").write_bytes(b"stale source")
+        (work / "output.gcode.3mf").write_bytes(b"stale output")
+        response = client.post("/slice", json=payload)
+        assert response.status_code == 200, response.text
+        assert (work / "source.stl").read_bytes() == b"stl"
+        assert response.json()["metadata"]["sliced"] is True
+
+        outside = tmp_path / "outside"
+        outside.mkdir()
+        linked = slicer_sidecar.ARTIFACT_ROOT / "work" / "linked"
+        linked.symlink_to(outside, target_is_directory=True)
+        payload["job_id"] = "linked"
+        response = client.post("/slice", json=payload)
+        assert response.status_code == 422
+        assert "unsafe work directory" in response.text
 
     current_job = "failure"
 
