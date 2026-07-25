@@ -246,7 +246,36 @@ def test_sidecar_paths_and_command(tmp_path: Path, monkeypatch: pytest.MonkeyPat
     command = slicer_sidecar.build_command(request, tmp_path / "source.stl", tmp_path / "out.3mf")
     assert "--orient" in command
     assert "--load-settings" in command
+    assert command[command.index("--enable-support") + 1] == "0"
+    assert "--clone-objects" not in command
+    assert "--repetitions" not in command
     assert command[-1].endswith("source.stl")
+
+
+def test_sidecar_command_maps_support_and_copies(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    sidecar_environment(tmp_path, monkeypatch)
+    source = tmp_path / "source.stl"
+    output = tmp_path / "out.3mf"
+
+    stl_request = slicer_sidecar.SliceRequest(
+        job_id="stl-job",
+        artifact_id="a" * 64,
+        filename="part.stl",
+        kind="stl",
+        settings=SliceSettings(supports=True, orient=False, copies=3),
+    )
+    stl_command = slicer_sidecar.build_command(stl_request, source, output)
+    assert stl_command[stl_command.index("--enable-support") + 1] == "1"
+    assert stl_command[stl_command.index("--clone-objects") + 1] == "3"
+    assert "--repetitions" not in stl_command
+    assert "--orient" not in stl_command
+
+    project_request = stl_request.model_copy(update={"filename": "project.3mf", "kind": "3mf"})
+    project_command = slicer_sidecar.build_command(project_request, tmp_path / "source.3mf", output)
+    assert project_command[project_command.index("--repetitions") + 1] == "3"
+    assert "--clone-objects" not in project_command
 
 
 class SidecarProcess:

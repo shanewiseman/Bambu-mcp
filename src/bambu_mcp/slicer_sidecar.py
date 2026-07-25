@@ -67,9 +67,14 @@ def build_command(request: SliceRequest, source: Path, output: Path) -> list[str
         ";".join(str(path) for path in filaments),
         "--curr-bed-type",
         request.settings.bed_type,
+        "--enable-support",
+        "1" if request.settings.supports else "0",
         "--arrange",
         "1",
     ]
+    if request.settings.copies > 1:
+        copy_option = "--clone-objects" if request.kind == "stl" else "--repetitions"
+        command.extend([copy_option, str(request.settings.copies)])
     if request.settings.orient:
         command.append("--orient")
     command.extend(
