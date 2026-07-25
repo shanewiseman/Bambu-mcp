@@ -191,7 +191,7 @@ def create_app(container: Container) -> FastAPI:
                 request.operation,
                 request.parameters,
             )
-            if request.operation
+            if request.operation is not None
             else container.workflow.approve_print_plan(request.job_id)
         )
         return approval.model_dump(mode="json")

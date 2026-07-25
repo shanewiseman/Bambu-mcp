@@ -14,6 +14,7 @@ from fastapi.testclient import TestClient
 from helpers import ingest
 from mcp import ClientSession
 from mcp.client.stdio import StdioServerParameters, stdio_client
+from sqlalchemy import func, select
 
 from bambu_mcp import docs as docs_module
 from bambu_mcp.api import create_app
@@ -21,6 +22,7 @@ from bambu_mcp.cli import main
 from bambu_mcp.container import Container
 from bambu_mcp.docs import generate_references
 from bambu_mcp.mcp_server import create_mcp
+from bambu_mcp.models import Approval
 from bambu_mcp.schemas import PreparePrintRequest
 from bambu_mcp.slicer import FakeSlicer
 
@@ -155,6 +157,16 @@ async def test_http_approval_endpoint(
         PreparePrintRequest(printer_id=registered_printer["id"], artifact_id=artifact_id)
     )
     with TestClient(create_app(container)) as client:
+        empty_operation = client.post(
+            "/api/v1/approvals",
+            headers=auth(),
+            json={"job_id": prepared.id, "operation": ""},
+        )
+        assert empty_operation.status_code == 422
+        assert "not catalogued" in empty_operation.json()["detail"]
+        with container.database.session() as session:
+            assert session.scalar(select(func.count()).select_from(Approval)) == 0
+
         approval = client.post(
             "/api/v1/approvals",
             headers=auth(),

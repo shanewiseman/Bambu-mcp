@@ -101,6 +101,10 @@ def build_command(request: SliceRequest, source: Path, output: Path) -> list[str
     return command
 
 
+def subprocess_environment() -> dict[str, str]:
+    return {"HOME": SLICER_HOME, "PATH": os.getenv("PATH", "/usr/bin:/bin")}
+
+
 async def binary_version() -> bool:
     if not await asyncio.to_thread(BINARY.is_file):
         return False
@@ -110,6 +114,7 @@ async def binary_version() -> bool:
             "--help",
             stdout=asyncio.subprocess.DEVNULL,
             stderr=asyncio.subprocess.DEVNULL,
+            env=subprocess_environment(),
         )
     except OSError:
         return False
@@ -192,7 +197,7 @@ async def slice_model(request: SliceRequest) -> dict[str, Any]:
         *command,
         stdout=asyncio.subprocess.PIPE,
         stderr=asyncio.subprocess.PIPE,
-        env={"HOME": SLICER_HOME, "PATH": os.getenv("PATH", "/usr/bin:/bin")},
+        env=subprocess_environment(),
     )
     try:
         stdout, stderr = await asyncio.wait_for(process.communicate(), timeout=900)
