@@ -101,9 +101,20 @@ async def test_mqtt_command_success_failure_and_payload() -> None:
 
 
 @pytest.mark.asyncio
-async def test_mqtt_command_timeout_publish_error_and_validation() -> None:
+async def test_mqtt_command_timeout_publish_error_and_validation(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     transport = FakeTransport()
     client = MQTTCommandClient("SERIAL", transport, ack_timeout=0.001)
+    registered: list[asyncio.Future[CommandResult]] = []
+    register = client.acks.register
+
+    def capture_future(sequence_id: str) -> asyncio.Future[CommandResult]:
+        future = register(sequence_id)
+        registered.append(future)
+        return future
+
+    monkeypatch.setattr(client.acks, "register", capture_future)
     for reserved in ("sequence_id", "command"):
         with pytest.raises(ValidationError, match="reserved MQTT envelope"):
             await client.command("print", "pause", {reserved: "tampered"})
@@ -111,9 +122,11 @@ async def test_mqtt_command_timeout_publish_error_and_validation() -> None:
     assert client.sequence.next() == "1"
     with pytest.raises(ProtocolError, match="acknowledge"):
         await client.command("print", "pause")
+    assert registered[-1].cancelled()
     transport.error = RuntimeError("publish failed")
     with pytest.raises(RuntimeError, match="publish failed"):
         await client.command("print", "pause")
+    assert registered[-1].cancelled()
     for family, command in (
         ("bad-family", "pause"),
         ("Print", "pause"),
