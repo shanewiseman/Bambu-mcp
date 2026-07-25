@@ -234,8 +234,10 @@ class PahoTransport:
         self.client.loop_start()
 
     async def close(self) -> None:
-        self.client.loop_stop()
-        await asyncio.to_thread(self.client.disconnect)
+        try:
+            await asyncio.to_thread(self.client.disconnect)
+        finally:
+            await asyncio.to_thread(self.client.loop_stop)
 
     async def publish(self, topic: str, payload: bytes, qos: int) -> None:
         if topic != f"device/{self.serial}/request":

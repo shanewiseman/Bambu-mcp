@@ -245,6 +245,46 @@ async def test_paho_disconnect_fails_pending_ack_from_callback_thread() -> None:
         await pending
 
 
+@pytest.mark.asyncio
+async def test_paho_close_disconnects_before_stopping_loop(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    async def receiver(topic: str, payload: bytes) -> None:
+        del topic, payload
+
+    transport = PahoTransport(
+        host="192.0.2.10",
+        serial="SERIAL",
+        access_code="12345678",
+        ca_file=Path("certs/bambu-lab-ca.pem"),
+        receiver=receiver,
+        disconnect_callback=lambda: None,
+    )
+    calls: list[str] = []
+
+    def disconnect() -> None:
+        calls.append("disconnect")
+
+    def loop_stop() -> None:
+        calls.append("loop_stop")
+
+    monkeypatch.setattr(transport.client, "disconnect", disconnect)
+    monkeypatch.setattr(transport.client, "loop_stop", loop_stop)
+    await transport.close()
+    assert calls == ["disconnect", "loop_stop"]
+
+    calls.clear()
+
+    def failed_disconnect() -> None:
+        calls.append("disconnect")
+        raise OSError("disconnect failed")
+
+    monkeypatch.setattr(transport.client, "disconnect", failed_disconnect)
+    with pytest.raises(OSError, match="disconnect failed"):
+        await transport.close()
+    assert calls == ["disconnect", "loop_stop"]
+
+
 def test_verified_tls_context_uses_ca() -> None:
     context = verified_tls_context(Path("certs/bambu-lab-ca.pem"))
     assert context.verify_mode == ssl.CERT_REQUIRED
