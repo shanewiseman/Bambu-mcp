@@ -87,12 +87,15 @@ def build_command(request: SliceRequest, source: Path, output: Path) -> list[str
 async def binary_version() -> bool:
     if not await asyncio.to_thread(BINARY.is_file):
         return False
-    process = await asyncio.create_subprocess_exec(
-        str(BINARY),
-        "--help",
-        stdout=asyncio.subprocess.DEVNULL,
-        stderr=asyncio.subprocess.DEVNULL,
-    )
+    try:
+        process = await asyncio.create_subprocess_exec(
+            str(BINARY),
+            "--help",
+            stdout=asyncio.subprocess.DEVNULL,
+            stderr=asyncio.subprocess.DEVNULL,
+        )
+    except OSError:
+        return False
     try:
         return await asyncio.wait_for(process.wait(), timeout=30) == 0
     except TimeoutError:
