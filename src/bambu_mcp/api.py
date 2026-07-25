@@ -36,10 +36,11 @@ class ApprovalRequest(BaseModel):
 
 def _bearer_token(authorization: str) -> str | None:
     """Extract a bearer token with a case-insensitive HTTP authentication scheme."""
-    scheme, separator, token = authorization.partition(" ")
-    if not separator or scheme.casefold() != "bearer" or not token:
+    fields = authorization.split()
+    if len(fields) != 2:
         return None
-    return token
+    scheme, token = fields
+    return token if scheme.casefold() == "bearer" else None
 
 
 def create_app(container: Container) -> FastAPI:
