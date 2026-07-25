@@ -83,6 +83,8 @@ class HttpSlicer:
                 payload = response.json()
         except (httpx.HTTPError, ValueError) as exc:
             raise SlicerError("Bambu Studio sidecar request failed") from exc
+        if not isinstance(payload, dict):
+            raise SlicerError("slicer returned an invalid response")
         if payload.get("version") != self.version:
             raise SlicerError("slicer returned an unexpected version")
         output = (self.artifact_root / "work" / job_id / "output.gcode.3mf").resolve()

@@ -140,18 +140,30 @@ async def slice_model(request: SliceRequest) -> dict[str, Any]:
         )
     try:
         stored = artifact_path(request.artifact_id)
-        work_root = (ARTIFACT_ROOT / "work").resolve()
-        work = (work_root / request.job_id).resolve()
-        if not work.is_relative_to(ARTIFACT_ROOT):
+        work_root_path = ARTIFACT_ROOT / "work"
+        if work_root_path.is_symlink():
             raise ValueError("unsafe work directory")
-        work_root.mkdir(parents=True, exist_ok=True, mode=0o2770)
+        work_root_path.mkdir(parents=True, exist_ok=True, mode=0o2770)
+        work_root = work_root_path.resolve()
+        if not work_root.is_relative_to(ARTIFACT_ROOT):
+            raise ValueError("unsafe work directory")
         work_root.chmod(0o2770)
-        work.mkdir(mode=0o2770)
+        work_path = work_root / request.job_id
+        if work_path.is_symlink():
+            raise ValueError("unsafe work directory")
+        work_path.mkdir(mode=0o2770, exist_ok=True)
+        work = work_path.resolve()
+        if not work.is_relative_to(work_root) or not work.is_dir():
+            raise ValueError("unsafe work directory")
         work.chmod(0o2770)
         source = work / f"source.{request.kind}"
+        output = work / "output.gcode.3mf"
+        for stale in (work / "source.stl", work / "source.3mf", output):
+            if stale.is_dir():
+                raise ValueError("unexpected directory in slicer workspace")
+            stale.unlink(missing_ok=True)
         shutil.copyfile(stored, source)
         source.chmod(0o640)
-        output = work / "output.gcode.3mf"
         command = build_command(request, source, output)
     except (OSError, ValueError) as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from exc
