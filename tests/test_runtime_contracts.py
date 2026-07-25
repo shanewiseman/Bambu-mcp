@@ -144,6 +144,7 @@ async def test_lan_gateway_connects_once_and_delegates_protocols(
             assert kwargs["host"] == "192.0.2.10"
             assert kwargs["serial"] == "SERIAL1"
             self.receiver = kwargs["receiver"]
+            self.disconnect_callback = kwargs["disconnect_callback"]
             self.connect_count = 0
             self.close_count = 0
 
@@ -166,6 +167,7 @@ async def test_lan_gateway_connects_once_and_delegates_protocols(
             self.state = {"print": {"gcode_state": "IDLE"}}
             self.received: list[tuple[str, bytes]] = []
             self.state_requests = 0
+            self.disconnect_count = 0
 
         async def receive(self, topic: str, payload: bytes) -> None:
             self.received.append((topic, payload))
@@ -181,6 +183,9 @@ async def test_lan_gateway_connects_once_and_delegates_protocols(
         ) -> CommandResult:
             assert (family, command, parameters) == ("print", "pause", {"reason": "test"})
             return CommandResult(sequence_id="1", command=command, result="success")
+
+        def disconnected(self) -> None:
+            self.disconnect_count += 1
 
     monkeypatch.setattr(gateway_module, "FTPSClient", FakeFTPS)
     monkeypatch.setattr(gateway_module, "PahoTransport", FakeTransport)
@@ -199,6 +204,12 @@ async def test_lan_gateway_connects_once_and_delegates_protocols(
     assert (await gateway.command("print", "pause", {"reason": "test"})).result == "success"
     assert gateway.transport.connect_count == 1
     assert gateway.mqtt.state_requests == 1
+
+    gateway.transport.disconnect_callback()
+    assert gateway.connected is False
+    assert gateway.mqtt.disconnect_count == 1
+    await gateway.status()
+    assert gateway.transport.connect_count == 2
 
     source = tmp_path / "plate.gcode.3mf"
     source.write_bytes(b"archive")
