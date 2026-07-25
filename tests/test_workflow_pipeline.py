@@ -214,21 +214,25 @@ def test_approval_expiry_replay_and_plan_tamper(
             return job
 
     job = asyncio.run(prepare())
+    digest = job.plan_digest
+    assert digest
     approval = container.workflow.approve_print_plan(job.id)
     with container.database.session() as session:
         stored = session.scalar(select(Approval).where(Approval.job_id == job.id))
         assert stored
         stored.expires_at = datetime.now(UTC) - timedelta(seconds=1)
     with pytest.raises(SafetyError, match="expired"):
-        container.workflow._consume_approval(job.id, approval.approval_token, job.plan_digest or "")
+        container.workflow._consume_approval(job.id, approval.approval_token, digest)
 
     job = asyncio.run(prepare())
+    digest = job.plan_digest
+    assert digest
     approval = container.workflow.approve_print_plan(job.id)
-    container.workflow._consume_approval(job.id, approval.approval_token, job.plan_digest or "")
+    container.workflow._consume_approval(job.id, approval.approval_token, digest)
     with pytest.raises(SafetyError, match="already"):
-        container.workflow._consume_approval(job.id, approval.approval_token, job.plan_digest or "")
+        container.workflow._consume_approval(job.id, approval.approval_token, digest)
     with pytest.raises(SafetyError, match="invalid"):
-        container.workflow._consume_approval(job.id, "wrong", job.plan_digest or "")
+        container.workflow._consume_approval(job.id, "wrong", digest)
 
     job = asyncio.run(prepare())
     with container.database.session() as session:

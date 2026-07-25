@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import errno
 import stat
 from pathlib import Path
 from typing import Any
@@ -291,6 +292,26 @@ async def test_binary_version(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -
     monkeypatch.setattr(asyncio, "wait_for", timeout)
     assert not await slicer_sidecar.binary_version()
     assert process.killed
+
+
+@pytest.mark.parametrize("error_number", [errno.EACCES, errno.ENOEXEC])
+def test_readyz_fails_closed_when_binary_cannot_launch(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, error_number: int
+) -> None:
+    sidecar_environment(tmp_path, monkeypatch)
+    binary = tmp_path / "studio"
+    binary.write_text("not executable", encoding="utf-8")
+    monkeypatch.setattr(slicer_sidecar, "BINARY", binary)
+
+    async def reject_launch(*args: Any, **kwargs: Any) -> SidecarProcess:
+        raise OSError(error_number, "cannot execute Studio")
+
+    monkeypatch.setattr(asyncio, "create_subprocess_exec", reject_launch)
+    with TestClient(slicer_sidecar.app) as client:
+        response = client.get("/readyz")
+
+    assert response.status_code == 200
+    assert response.json()["ready"] is False
 
 
 def test_sidecar_http_health_ready_and_dual_gate(
