@@ -3,6 +3,7 @@ from __future__ import annotations
 import asyncio
 import json
 import os
+import sys
 from pathlib import Path
 from typing import Any
 
@@ -219,8 +220,8 @@ async def test_mcp_stdio_round_trip(tmp_path: Path) -> None:
         "BAMBU_MCP_ALLOW_SIMULATED_PRINTERS": "true",
     }
     server = StdioServerParameters(
-        command=str(REPO_ROOT / ".venv/bin/bambu-mcp"),
-        args=["stdio"],
+        command=sys.executable,
+        args=["-m", "bambu_mcp", "stdio"],
         env=environment,
     )
     async with stdio_client(server) as (read, write), ClientSession(read, write) as session:
