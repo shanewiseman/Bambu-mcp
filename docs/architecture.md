@@ -11,7 +11,9 @@ The deployment has two processes:
 
 1. `bambu-mcp` owns MCP, the narrow HTTP API, SQL persistence, encryption,
    artifacts, workflows, MQTT, FTPS, and RTSPS reads. It is the only service on
-   the printer-facing network.
+   the printer-facing network. Compose leaves its default PID namespace
+   unshared. Camera capture still places the access code in ffmpeg argv, which
+   remains visible to trusted host and Docker administrators.
 2. `bambu-slicer` owns one pinned Bambu Studio CLI process at a time. It receives
    IDs and allowlisted profile names, shares artifact storage, and is attached
    only to an internal Docker network with no LAN/default route.

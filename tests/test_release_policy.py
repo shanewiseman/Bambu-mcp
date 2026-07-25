@@ -6,7 +6,9 @@ from pathlib import Path
 
 import pytest
 
-LICENSE_CHECKER = Path(__file__).parents[1] / "scripts" / "check_dependency_licenses.py"
+REPOSITORY_ROOT = Path(__file__).parents[1]
+LICENSE_CHECKER = REPOSITORY_ROOT / "scripts" / "check_dependency_licenses.py"
+COMPOSE_FILE = REPOSITORY_ROOT / "compose.yaml"
 
 
 def write_license_report(path: Path, license_name: str) -> None:
@@ -64,3 +66,10 @@ def test_license_checker_accepts_non_gpl_labels(
     runpy.run_path(str(LICENSE_CHECKER), run_name="__main__")
 
     assert "checked 1 installed package" in capsys.readouterr().out
+
+
+def test_core_service_uses_default_private_pid_namespace() -> None:
+    compose = COMPOSE_FILE.read_text(encoding="utf-8")
+    core_service = compose.split("  bambu-slicer:", maxsplit=1)[0]
+
+    assert "\n    pid:" not in core_service

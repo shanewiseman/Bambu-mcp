@@ -528,7 +528,7 @@ class WorkflowService:
         }.get(reported)
         with self.database.session() as session:
             job = self._job(session, job_id)
-            if target and target is not job.state:
+            if target and target is not job.state and target in ALLOWED_TRANSITIONS[job.state]:
                 self._transition(session, job, target, {"reported_gcode_state": reported})
             return job_view(job)
 
