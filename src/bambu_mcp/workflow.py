@@ -8,6 +8,7 @@ from pathlib import Path
 from typing import Any, cast
 
 from sqlalchemy import select
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from bambu_mcp.artifacts import ArtifactStore
@@ -129,7 +130,11 @@ class WorkflowService:
                 capabilities=self.adapter.capabilities(None),
             )
             session.add(printer)
-            session.flush()
+            try:
+                session.flush()
+            except IntegrityError as exc:
+                session.rollback()
+                raise ConflictError("printer name or serial is already registered") from exc
             self._audit(session, "printer.register", "printer", printer.id, "success")
             return printer_view(printer)
 
@@ -520,7 +525,6 @@ class WorkflowService:
             "PAUSED": JobState.PAUSED,
             "FINISH": JobState.SUCCEEDED,
             "FAILED": JobState.FAILED,
-            "IDLE": JobState.SUCCEEDED if job.state is JobState.RUNNING else job.state,
         }.get(reported)
         with self.database.session() as session:
             job = self._job(session, job_id)
