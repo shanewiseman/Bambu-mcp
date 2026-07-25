@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 from datetime import UTC, datetime, timedelta
 from typing import Any
 
@@ -212,7 +213,7 @@ def test_approval_expiry_replay_and_plan_tamper(
             session.expunge(job)
             return job
 
-    job = __import__("asyncio").run(prepare())
+    job = asyncio.run(prepare())
     approval = container.workflow.approve_print_plan(job.id)
     with container.database.session() as session:
         stored = session.scalar(select(Approval).where(Approval.job_id == job.id))
@@ -221,7 +222,7 @@ def test_approval_expiry_replay_and_plan_tamper(
     with pytest.raises(SafetyError, match="expired"):
         container.workflow._consume_approval(job.id, approval.approval_token, job.plan_digest or "")
 
-    job = __import__("asyncio").run(prepare())
+    job = asyncio.run(prepare())
     approval = container.workflow.approve_print_plan(job.id)
     container.workflow._consume_approval(job.id, approval.approval_token, job.plan_digest or "")
     with pytest.raises(SafetyError, match="already"):
@@ -229,7 +230,7 @@ def test_approval_expiry_replay_and_plan_tamper(
     with pytest.raises(SafetyError, match="invalid"):
         container.workflow._consume_approval(job.id, "wrong", job.plan_digest or "")
 
-    job = __import__("asyncio").run(prepare())
+    job = asyncio.run(prepare())
     with container.database.session() as session:
         stored_job = session.get(Job, job.id)
         assert stored_job

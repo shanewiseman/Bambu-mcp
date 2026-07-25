@@ -105,14 +105,23 @@ enabling writes.
    `approve_print_plan`, then pass the one-use token to
    `execute_print_pipeline` before it expires.
 
-For local MCP clients that own the process, reuse the exported credential key
-and use stdio:
+For local MCP clients that own the process, create a stable owner-only credential
+key file and use stdio:
 
 ```bash
+install -d -m 700 "$PWD/data" "$PWD/artifacts"
+if [ ! -s "$PWD/data/credential-key.txt" ]; then
+  (umask 077; bambu-mcp keygen credential > "$PWD/data/credential-key.txt")
+fi
+export BAMBU_MCP_CREDENTIAL_KEY_FILE="$PWD/data/credential-key.txt"
 export BAMBU_MCP_DATABASE_URL="sqlite:///$PWD/data/bambu-mcp.db"
 export BAMBU_MCP_ARTIFACT_ROOT="$PWD/artifacts"
 bambu-mcp stdio
 ```
+
+The ignored `data/credential-key.txt` must remain stable once printer credentials
+are stored; back it up separately and never commit or regenerate it for an
+existing database.
 
 See the [MCP client guide](docs/mcp-clients.md) for example configurations and
 [operator guide](docs/operator-guide.md) for LAN, Developer Mode, profiles,
