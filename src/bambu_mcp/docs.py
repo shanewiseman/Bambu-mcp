@@ -40,31 +40,34 @@ def generate_references(output_root: Path) -> None:
         )
         slicer = FakeSlicer(temp / "artifacts", b"not-used")
         container = build_container(settings, slicer=slicer)
-        app = create_app(container)
-        (output_root / "openapi.json").write_text(
-            json.dumps(app.openapi(), indent=2, sort_keys=True) + "\n",
-            encoding="utf-8",
-        )
-        mcp = create_mcp(container)
-        lines = [
-            "# MCP tool reference",
-            "",
-            "Generated from the typed server definitions. Do not edit by hand.",
-            "",
-        ]
-        for tool in sorted(mcp._tool_manager.list_tools(), key=lambda item: item.name):
-            lines.extend([f"## `{tool.name}`", "", cleandoc(tool.description or ""), ""])
-            properties = tool.parameters.get("properties", {})
-            required = set(tool.parameters.get("required", []))
-            if properties:
-                lines.extend(["| Parameter | Type | Required |", "| --- | --- | --- |"])
-                for name, schema in properties.items():
-                    lines.append(
-                        f"| `{name}` | `{_schema_type(schema)}` | "
-                        f"{'yes' if name in required else 'no'} |"
-                    )
-                lines.append("")
-        (output_root / "mcp-tools.md").write_text(
-            "\n".join(lines).rstrip() + "\n",
-            encoding="utf-8",
-        )
+        try:
+            app = create_app(container)
+            (output_root / "openapi.json").write_text(
+                json.dumps(app.openapi(), indent=2, sort_keys=True) + "\n",
+                encoding="utf-8",
+            )
+            mcp = create_mcp(container)
+            lines = [
+                "# MCP tool reference",
+                "",
+                "Generated from the typed server definitions. Do not edit by hand.",
+                "",
+            ]
+            for tool in sorted(mcp._tool_manager.list_tools(), key=lambda item: item.name):
+                lines.extend([f"## `{tool.name}`", "", cleandoc(tool.description or ""), ""])
+                properties = tool.parameters.get("properties", {})
+                required = set(tool.parameters.get("required", []))
+                if properties:
+                    lines.extend(["| Parameter | Type | Required |", "| --- | --- | --- |"])
+                    for name, schema in properties.items():
+                        lines.append(
+                            f"| `{name}` | `{_schema_type(schema)}` | "
+                            f"{'yes' if name in required else 'no'} |"
+                        )
+                    lines.append("")
+            (output_root / "mcp-tools.md").write_text(
+                "\n".join(lines).rstrip() + "\n",
+                encoding="utf-8",
+            )
+        finally:
+            container.database.engine.dispose()

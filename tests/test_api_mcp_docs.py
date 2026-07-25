@@ -5,6 +5,7 @@ import json
 import os
 import sys
 from pathlib import Path
+from types import SimpleNamespace
 from typing import Any
 
 import pytest
@@ -14,6 +15,7 @@ from mcp import ClientSession
 from mcp.client.stdio import StdioServerParameters, stdio_client
 from test_workflow_pipeline import ingest
 
+from bambu_mcp import docs as docs_module
 from bambu_mcp.api import create_app
 from bambu_mcp.cli import main
 from bambu_mcp.container import Container
@@ -200,6 +202,26 @@ def test_generated_references(tmp_path: Path) -> None:
     tools = (output / "mcp-tools.md").read_text(encoding="utf-8")
     assert tools.count("\n## `") == 56
     assert "`execute_print_pipeline`" in tools
+
+
+def test_generated_references_dispose_database_on_failure(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    disposed: list[bool] = []
+    container = SimpleNamespace(
+        database=SimpleNamespace(engine=SimpleNamespace(dispose=lambda: disposed.append(True)))
+    )
+    monkeypatch.setattr(docs_module, "build_container", lambda *args, **kwargs: container)
+
+    def fail_app(value: Any) -> None:
+        assert value is container
+        raise RuntimeError("injected documentation failure")
+
+    monkeypatch.setattr(docs_module, "create_app", fail_app)
+
+    with pytest.raises(RuntimeError, match="injected documentation failure"):
+        generate_references(tmp_path / "failed")
+    assert disposed == [True]
 
 
 def test_cli_keygen_and_generate_docs(
