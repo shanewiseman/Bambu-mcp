@@ -75,6 +75,14 @@ class AckTracker:
             future.set_result(result)
         return True
 
+    def cancel(self, sequence_id: str) -> bool:
+        future = self._pending.pop(sequence_id, None)
+        if future is None:
+            return False
+        if not future.done():
+            future.cancel()
+        return True
+
     def fail_all(self, reason: str) -> None:
         for sequence_id, future in list(self._pending.items()):
             if not future.done():
@@ -144,11 +152,9 @@ class MQTTCommandClient:
             )
             return await asyncio.wait_for(future, timeout=self.ack_timeout)
         except TimeoutError as exc:
-            self.acks._pending.pop(sequence_id, None)
             raise ProtocolError(f"printer did not acknowledge {family}.{command}") from exc
-        except Exception:
-            self.acks._pending.pop(sequence_id, None)
-            raise
+        finally:
+            self.acks.cancel(sequence_id)
 
     async def receive(self, topic: str, payload: bytes) -> None:
         if topic != self.report_topic:
