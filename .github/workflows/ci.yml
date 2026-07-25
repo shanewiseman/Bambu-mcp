@@ -1,0 +1,123 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  python:
+    name: Python quality and contracts
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+      - name: Install project and verification tools
+        run: python -m pip install --disable-pip-version-check -e '.[dev]'
+      - name: Lint and format
+        run: |
+          ruff check .
+          ruff format --check .
+      - name: Type check
+        run: mypy src
+      - name: Test with branch coverage
+        run: pytest --cov-report=term --cov-report=xml
+      - name: Scan source
+        run: bandit -c pyproject.toml -r src
+      - name: Audit dependency vulnerabilities
+        run: pip-audit . --strict
+      - name: Verify migration
+        env:
+          BAMBU_MCP_DATABASE_URL: sqlite:///ci.db
+        run: |
+          alembic upgrade head
+          alembic check
+      - name: Verify generated references
+        run: |
+          rm -rf /tmp/bambu-mcp-generated
+          bambu-mcp generate-docs --output /tmp/bambu-mcp-generated
+          diff -ru docs/generated /tmp/bambu-mcp-generated
+      - name: Build and inspect distributions
+        run: |
+          python -m build
+          python scripts/check_distribution.py dist
+      - name: Produce dependency and license inventories
+        run: |
+          mkdir -p build/evidence
+          python -m venv build/runtime-env
+          build/runtime-env/bin/pip install --disable-pip-version-check dist/*.whl
+          cyclonedx-py environment build/runtime-env/bin/python --pyproject pyproject.toml \
+            --output-reproducible --output-format JSON \
+            --output-file build/evidence/python-sbom.json
+          pip-licenses --python build/runtime-env/bin/python \
+            --format=json --with-authors --with-urls \
+            --output-file=build/evidence/python-licenses.json
+          python scripts/check_dependency_licenses.py build/evidence/python-licenses.json
+      - uses: actions/upload-artifact@v4
+        with:
+          name: python-release-evidence
+          path: |
+            coverage.xml
+            dist/
+            build/evidence/
+          if-no-files-found: error
+          retention-days: 14
+
+  containers:
+    name: Container definitions
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
+    env:
+      BAMBU_MCP_API_KEY: compose-validation-only
+      BAMBU_MCP_CREDENTIAL_KEY: MDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDA=
+    steps:
+      - uses: actions/checkout@v4
+      - name: Validate Compose model
+        run: docker compose config --quiet
+      - name: Check Dockerfiles
+        run: |
+          docker build --check --file docker/core.Dockerfile .
+          docker build --check --file docker/slicer.Dockerfile .
+      - name: Exercise packaged runtime end to end
+        run: docker build --target container-test --file docker/core.Dockerfile --tag bambu-mcp-e2e:ci .
+      - name: Build isolated core image
+        run: docker compose build bambu-mcp
+      - name: Inspect core image
+        run: |
+          test "$(docker image inspect bambu-mcp-bambu-mcp --format '{{.Config.User}}')" = "bambu"
+          test "$(docker image inspect bambu-mcp-bambu-mcp --format '{{index .Config.Labels "org.opencontainers.image.licenses"}}')" = "LicenseRef-Provenance-Review-Required"
+          docker run --rm --entrypoint sh bambu-mcp-bambu-mcp \
+            -c "test ! -w /app \
+              && test ! -w /home/bambu \
+              && test \"\$(stat -c %a /data)\" = 750 \
+              && test \"\$(stat -c %u:%g /data)\" = 10001:10001 \
+              && test \"\$(stat -c %a /artifacts)\" = 2770 \
+              && test \"\$(stat -c %u:%g /artifacts)\" = 10001:10000 \
+              && id -G | tr ' ' '\n' | grep -qx 10000"
+          docker run --rm --entrypoint python bambu-mcp-bambu-mcp \
+            -c "import bambu_mcp; print(bambu_mcp.__version__)"
+      - name: Verify fresh Compose state and shared artifact access
+        run: |
+          docker compose run --no-deps --rm --entrypoint python bambu-mcp \
+            -c 'import os, stat; from pathlib import Path; from bambu_mcp.config import Settings; from bambu_mcp.container import build_container; container=build_container(Settings()); database=Path("/data/bambu-mcp.db"); secret=Path("/run/secrets/api_key"); assert stat.S_IMODE(database.stat().st_mode)==0o600; assert stat.S_IMODE(secret.stat().st_mode)==0o400; assert secret.stat().st_uid==10001; assert set(os.getgroups()) >= {10000,10001}; container.database.engine.dispose()'
+          docker run --rm --user 10002:10002 --group-add 10000 \
+            --volume bambu-mcp_artifacts:/artifacts \
+            --entrypoint python bambu-mcp-bambu-mcp \
+            -c 'from pathlib import Path; root=Path("/artifacts/cross-user-proof"); root.mkdir(mode=0o2770); root.chmod(0o2770); payload=root/"slice.gcode.3mf"; payload.write_bytes(b"proof"); payload.chmod(0o640)'
+          docker run --rm --volume bambu-mcp_artifacts:/artifacts \
+            --entrypoint python bambu-mcp-bambu-mcp \
+            -c 'from pathlib import Path; p=Path("/artifacts/cross-user-proof/slice.gcode.3mf"); assert p.read_bytes()==b"proof"; p.unlink(); p.parent.rmdir()'
+      - name: Remove Compose validation state
+        if: always()
+        run: docker compose down --volumes --remove-orphans

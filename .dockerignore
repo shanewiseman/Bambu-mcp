@@ -1,0 +1,12 @@
+.git
+.github
+.venv
+.coverage
+.mypy_cache
+.pytest_cache
+.ruff_cache
+artifacts
+data
+dist
+htmlcov
+secrets

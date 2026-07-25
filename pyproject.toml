@@ -1,0 +1,105 @@
+[build-system]
+requires = ["hatchling>=1.27"]
+build-backend = "hatchling.build"
+
+[project]
+name = "bambu-mcp"
+version = "0.1.0"
+description = "A LAN-first, safety-gated MCP service for Bambu Lab printers"
+readme = "README.md"
+requires-python = ">=3.12"
+license = { text = "LicenseRef-Provenance-Review-Required" }
+authors = [{ name = "Bambu MCP contributors" }]
+keywords = ["bambu-lab", "mcp", "3d-printing", "x2d", "automation"]
+classifiers = [
+  "Development Status :: 3 - Alpha",
+  "Environment :: Console",
+  "Framework :: FastAPI",
+  "Programming Language :: Python :: 3",
+  "Programming Language :: Python :: 3.12",
+  "Topic :: Home Automation",
+]
+dependencies = [
+  "alembic>=1.16,<2",
+  "cryptography>=48.0.1,<49",
+  "defusedxml>=0.7.1,<1",
+  "fastapi>=0.116,<1",
+  "httpx>=0.28,<1",
+  "mcp>=1.27,<2",
+  "paho-mqtt>=2.1,<3",
+  "pydantic>=2.11,<3",
+  "pydantic-settings>=2.10,<3",
+  "python-multipart>=0.0.20,<1",
+  "sqlalchemy>=2.0.41,<3",
+  "trimesh>=4.6,<5",
+  "uvicorn>=0.35,<1",
+]
+
+[project.optional-dependencies]
+dev = [
+  "bandit>=1.8,<2",
+  "build>=1.2,<2",
+  "cyclonedx-bom>=7,<8",
+  "mypy>=1.16,<2",
+  "pip-audit>=2.9,<3",
+  "pip-licenses>=5,<6",
+  "pytest>=8.4,<9",
+  "pytest-asyncio>=1.0,<2",
+  "pytest-cov>=6.2,<7",
+  "ruff>=0.12,<1",
+  "types-defusedxml>=0.7.0.20250516",
+]
+
+[project.scripts]
+bambu-mcp = "bambu_mcp.cli:main"
+
+[project.urls]
+Documentation = "https://github.com/shanewiseman/Bambu-mcp/tree/main/docs"
+Issues = "https://github.com/shanewiseman/Bambu-mcp/issues"
+Repository = "https://github.com/shanewiseman/Bambu-mcp"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/bambu_mcp"]
+
+[tool.pytest.ini_options]
+addopts = "--strict-config --strict-markers --cov=bambu_mcp --cov-report=term-missing --cov-fail-under=90"
+asyncio_mode = "auto"
+filterwarnings = [
+  "ignore:Using `httpx` with `starlette.testclient` is deprecated:starlette.exceptions.StarletteDeprecationWarning",
+]
+testpaths = ["tests"]
+
+[tool.coverage.run]
+branch = true
+source = ["bambu_mcp"]
+
+[tool.coverage.report]
+exclude_also = [
+  "if TYPE_CHECKING:",
+  "if __name__ == .__main__.:",
+  "raise NotImplementedError",
+]
+show_missing = true
+skip_covered = true
+
+[tool.ruff]
+line-length = 100
+target-version = "py312"
+
+[tool.ruff.lint]
+select = ["A", "ASYNC", "B", "C4", "E", "F", "I", "N", "PERF", "PIE", "RUF", "S", "SIM", "UP"]
+ignore = ["S101"]
+
+[tool.ruff.lint.per-file-ignores]
+"tests/**" = ["S104", "S105", "S106"]
+
+[tool.mypy]
+python_version = "3.12"
+strict = true
+plugins = ["pydantic.mypy"]
+packages = ["bambu_mcp"]
+warn_unreachable = true
+
+[tool.bandit]
+exclude_dirs = ["tests"]
+skips = ["B101"]
