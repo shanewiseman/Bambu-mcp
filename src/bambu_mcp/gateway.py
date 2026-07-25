@@ -132,7 +132,8 @@ class LanGateway:
             disconnect_callback=self._disconnected,
         )
         self.mqtt = MQTTCommandClient(serial, self.transport, ack_timeout=ack_timeout)
-        self.connected = False
+        self.connected: bool = False
+        self._connect_lock = asyncio.Lock()
 
     async def _receive(self, topic: str, payload: bytes) -> None:
         await self.mqtt.receive(topic, payload)
@@ -142,7 +143,14 @@ class LanGateway:
         self.mqtt.disconnected()
 
     async def _ensure_connected(self) -> None:
-        if not self.connected:
+        if self.connected:
+            return
+        await self._connect_once()
+
+    async def _connect_once(self) -> None:
+        async with self._connect_lock:
+            if self.connected:
+                return
             await self.transport.connect()
             self.connected = True
 
@@ -171,9 +179,10 @@ class LanGateway:
         await asyncio.to_thread(self.ftps.delete, filename)
 
     async def close(self) -> None:
-        if self.connected:
-            await self.transport.close()
-            self.connected = False
+        async with self._connect_lock:
+            if self.connected:
+                await self.transport.close()
+                self.connected = False
 
 
 class GatewayPool:
