@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 import io
 import runpy
 from pathlib import Path
@@ -219,9 +220,13 @@ async def test_lan_gateway_connects_once_and_delegates_protocols(
             self.disconnect_callback = kwargs["disconnect_callback"]
             self.connect_count = 0
             self.close_count = 0
+            self.connect_started = asyncio.Event()
+            self.release_connect = asyncio.Event()
 
         async def connect(self) -> None:
             self.connect_count += 1
+            self.connect_started.set()
+            await self.release_connect.wait()
 
         async def close(self) -> None:
             self.close_count += 1
@@ -272,10 +277,19 @@ async def test_lan_gateway_connects_once_and_delegates_protocols(
 
     await gateway._receive("device/SERIAL1/report", b"{}")
     assert gateway.mqtt.received == [("device/SERIAL1/report", b"{}")]
-    assert (await gateway.status())["print"]["gcode_state"] == "IDLE"
+
+    first_status = asyncio.create_task(gateway.status())
+    await gateway.transport.connect_started.wait()
+    second_status = asyncio.create_task(gateway.status())
+    await asyncio.sleep(0)
+    assert gateway.transport.connect_count == 1
+    gateway.transport.release_connect.set()
+    statuses = await asyncio.gather(first_status, second_status)
+    assert all(state["print"]["gcode_state"] == "IDLE" for state in statuses)
+    assert gateway.mqtt.state_requests == 2
+
     assert (await gateway.command("print", "pause", {"reason": "test"})).result == "success"
     assert gateway.transport.connect_count == 1
-    assert gateway.mqtt.state_requests == 1
 
     gateway.transport.disconnect_callback()
     assert gateway.connected is False
