@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 import asyncio
+import hmac
+import secrets
 from collections.abc import Callable
 from pathlib import Path
 from typing import Any, Protocol
@@ -174,13 +176,37 @@ class GatewayPool:
     def __init__(self, factory: GatewayFactory) -> None:
         self.factory = factory
         self._gateways: dict[str, PrinterGateway] = {}
+        self._credential_digests: dict[str, bytes] = {}
+        self._credential_digest_key = secrets.token_bytes(32)
+        self._lock = asyncio.Lock()
 
-    def get(self, printer: Printer, access_code: str) -> PrinterGateway:
-        if printer.id not in self._gateways:
-            self._gateways[printer.id] = self.factory(printer, access_code)
-        return self._gateways[printer.id]
+    async def get(self, printer: Printer, access_code: str) -> PrinterGateway:
+        credential_digest = hmac.digest(
+            self._credential_digest_key,
+            access_code.encode(),
+            "sha256",
+        )
+        async with self._lock:
+            gateway = self._gateways.get(printer.id)
+            previous_digest = self._credential_digests.get(printer.id)
+            if gateway is not None:
+                if previous_digest is not None and hmac.compare_digest(
+                    previous_digest,
+                    credential_digest,
+                ):
+                    return gateway
+                await gateway.close()
+                self._gateways.pop(printer.id)
+                self._credential_digests.pop(printer.id, None)
+            gateway = self.factory(printer, access_code)
+            self._gateways[printer.id] = gateway
+            self._credential_digests[printer.id] = credential_digest
+            return gateway
 
     async def close(self) -> None:
-        for gateway in self._gateways.values():
-            await gateway.close()
-        self._gateways.clear()
+        async with self._lock:
+            try:
+                await asyncio.gather(*(gateway.close() for gateway in self._gateways.values()))
+            finally:
+                self._gateways.clear()
+                self._credential_digests.clear()
