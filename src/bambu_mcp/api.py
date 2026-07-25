@@ -33,6 +33,14 @@ class ApprovalRequest(BaseModel):
     parameters: dict[str, Any] = Field(default_factory=dict)
 
 
+def _bearer_token(authorization: str) -> str | None:
+    """Extract a bearer token with a case-insensitive HTTP authentication scheme."""
+    scheme, separator, token = authorization.partition(" ")
+    if not separator or scheme.casefold() != "bearer" or not token:
+        return None
+    return token
+
+
 def create_app(container: Container) -> FastAPI:
     mcp = create_mcp(container)
     mcp_app = mcp.streamable_http_app()
@@ -63,9 +71,7 @@ def create_app(container: Container) -> FastAPI:
             return await call_next(request)
         expected = container.settings.resolved_api_key
         authorization = request.headers.get("authorization", "")
-        bearer = (
-            authorization.removeprefix("Bearer ") if authorization.startswith("Bearer ") else None
-        )
+        bearer = _bearer_token(authorization)
         supplied = request.headers.get("x-api-key") or bearer
         if not compare_api_key(expected, supplied):
             return JSONResponse(status_code=401, content={"detail": "invalid API credential"})

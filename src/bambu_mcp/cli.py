@@ -12,6 +12,7 @@ from cryptography.fernet import Fernet
 from bambu_mcp.api import create_app
 from bambu_mcp.config import Settings
 from bambu_mcp.container import build_container
+from bambu_mcp.database import Database
 from bambu_mcp.docs import generate_references
 from bambu_mcp.mcp_server import create_mcp
 
@@ -25,7 +26,7 @@ def parser() -> argparse.ArgumentParser:
     keygen.add_argument("kind", choices=("credential", "api"))
     docs = commands.add_parser("generate-docs", help="regenerate committed API references")
     docs.add_argument("--output", type=Path, default=Path("docs/generated"))
-    commands.add_parser("init-db", help="create/migrate the configured database")
+    commands.add_parser("init-db", help="upgrade the configured database to the latest schema")
     return root
 
 
@@ -43,11 +44,15 @@ def main() -> None:
         return None
 
     settings = Settings()
-    container = build_container(settings)
     if args.command == "init-db":
-        container.database.create_schema()
-        container.database.engine.dispose()
+        settings.prepare_directories()
+        database = Database(settings.database_url)
+        try:
+            database.upgrade_schema()
+        finally:
+            database.engine.dispose()
         return None
+    container = build_container(settings)
     if args.command == "stdio":
         create_mcp(container).run(transport="stdio")
         return None

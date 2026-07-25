@@ -1,4 +1,4 @@
-"""Create printers, artifacts, workflows, approvals, and audit records.
+"""Create the initial printers, artifacts, workflow, approval, and audit schema.
 
 Revision ID: 0001
 Revises:

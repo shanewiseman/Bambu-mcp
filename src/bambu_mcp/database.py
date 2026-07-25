@@ -6,11 +6,13 @@ from collections.abc import Iterator
 from contextlib import contextmanager
 from pathlib import Path
 
+from alembic import command
+from alembic.config import Config
 from sqlalchemy import Engine, create_engine, select
 from sqlalchemy.engine import URL, make_url
 from sqlalchemy.orm import Session, sessionmaker
 
-from bambu_mcp.models import Base, Job, JobState, JobStep
+from bambu_mcp.models import Job, JobState, JobStep
 
 INTERRUPTED_STATES = {
     JobState.UPLOADING,
@@ -47,8 +49,13 @@ class Database:
             class_=Session,
         )
 
-    def create_schema(self) -> None:
-        Base.metadata.create_all(self.engine)
+    def upgrade_schema(self) -> None:
+        """Upgrade the database to the packaged Alembic head revision."""
+        config = Config()
+        config.set_main_option("script_location", "bambu_mcp:migrations")
+        with self.engine.connect() as connection:
+            config.attributes["connection"] = connection
+            command.upgrade(config, "head")
         harden_sqlite_file(self.engine.url)
 
     @contextmanager
