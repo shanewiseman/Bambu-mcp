@@ -88,6 +88,8 @@ class ArchivePolicy:
                         raise ValidationError("archive entry has an unsafe compression ratio")
                     if entry.compress_size and entry.file_size / entry.compress_size > 1_000:
                         raise ValidationError("archive entry has an unsafe compression ratio")
+                    if entry.filename in names:
+                        raise ValidationError("archive contains duplicate entry names")
                     names.add(entry.filename)
 
                 content_types = "[Content_Types].xml"
@@ -176,6 +178,13 @@ class ArtifactStore:
         if size == 0:
             temporary_path.unlink(missing_ok=True)
             raise ValidationError("empty artifacts are not accepted")
+        kind = artifact_kind(name)
+        try:
+            metadata = self.inspect_path(temporary_path, kind)
+        except Exception:
+            temporary_path.unlink(missing_ok=True)
+            raise
+
         artifact_id = digest.hexdigest()
         destination = self.path_for(artifact_id)
         destination.parent.mkdir(parents=True, exist_ok=True, mode=0o2770)
@@ -189,8 +198,6 @@ class ArtifactStore:
         existing = session.get(Artifact, artifact_id)
         if existing:
             return existing
-        kind = artifact_kind(name)
-        metadata = self.inspect_path(destination, kind)
         artifact = Artifact(
             id=artifact_id,
             filename=name,

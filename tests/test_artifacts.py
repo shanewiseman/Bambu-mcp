@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import hashlib
 import io
 import stat
 import zipfile
@@ -18,6 +19,7 @@ from bambu_mcp.artifacts import (
 )
 from bambu_mcp.database import Database
 from bambu_mcp.errors import NotFoundError, SafetyError, ValidationError
+from bambu_mcp.models import Artifact
 from bambu_mcp.schemas import TransformSpec
 
 
@@ -78,8 +80,12 @@ def test_ingest_limits_empty_invalid_and_missing(tmp_path: Path) -> None:
             artifacts.ingest_bytes(session, "x.stl", b"")
         with pytest.raises(ValidationError, match="upload limit"):
             artifacts.ingest_bytes(session, "x.stl", b"x" * 11)
+        invalid = b"not stl"
+        invalid_id = hashlib.sha256(invalid).hexdigest()
         with pytest.raises(ValidationError, match="inspected"):
-            artifacts.ingest_bytes(session, "x.stl", b"not stl")
+            artifacts.ingest_bytes(session, "x.stl", invalid)
+        assert not artifacts.path_for(invalid_id).exists()
+        assert session.get(Artifact, invalid_id) is None
         with pytest.raises(NotFoundError):
             artifacts.get(session, "0" * 64)
 
@@ -154,6 +160,16 @@ def test_archive_policy_failure_boundaries() -> None:
         policy.validate(io.BytesIO(b"bad"))
     with pytest.raises(ValidationError, match="entry count"):
         policy.validate(archive_bytes([]))
+    with pytest.warns(UserWarning, match="Duplicate name"):
+        duplicate = archive_bytes(
+            [
+                ("[Content_Types].xml", b"<Types/>", None),
+                ("[Content_Types].xml", b"<Types/>", None),
+                ("3D/a.model", b"<model/>", None),
+            ]
+        )
+    with pytest.raises(ValidationError, match="duplicate"):
+        policy.validate(duplicate)
     traversal = archive_bytes([("[Content_Types].xml", b"<Types/>", None), ("../evil", b"x", None)])
     with pytest.raises(SafetyError, match="unsafe path"):
         policy.validate(traversal)
