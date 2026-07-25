@@ -3,11 +3,15 @@
 from __future__ import annotations
 
 import json
+import re
 import sys
 from pathlib import Path
 from typing import Any
 
-FORBIDDEN = ("GNU GENERAL PUBLIC LICENSE", "GNU AFFERO", "AGPL", "GPLV")
+FORBIDDEN_LICENSE = re.compile(
+    r"\b(?:A?GPL)(?:V\d+)?\b|GNU (?:AFFERO )?GENERAL PUBLIC LICENSE",
+    re.IGNORECASE,
+)
 
 
 def main() -> None:
@@ -16,7 +20,7 @@ def main() -> None:
     violations = []
     for package in report:
         license_name = str(package.get("License", "")).upper()
-        if any(marker in license_name for marker in FORBIDDEN):
+        if FORBIDDEN_LICENSE.search(license_name):
             violations.append(f"{package.get('Name')} {package.get('Version')}: {license_name}")
     if violations:
         raise SystemExit("copyleft dependency crossed the core boundary:\n" + "\n".join(violations))
