@@ -4,7 +4,7 @@ from typing import Any
 
 import pytest
 from conftest import make_3mf
-from test_workflow_pipeline import ingest
+from helpers import ingest
 
 from bambu_mcp.container import Container
 from bambu_mcp.errors import ConflictError, NotFoundError, SafetyError

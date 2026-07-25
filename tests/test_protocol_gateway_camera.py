@@ -26,7 +26,10 @@ class FakeFTP:
         self.data = b""
         self.deleted: list[str] = []
         self.closed = False
+        self.close_count = 0
         self.fail = False
+        self.fail_quit = False
+        self.quit_count = 0
 
     def storbinary(self, command: str, source: io.BytesIO) -> None:
         assert command == "STOR plate.3mf"
@@ -49,9 +52,13 @@ class FakeFTP:
         self.deleted.append(name)
 
     def quit(self) -> None:
+        self.quit_count += 1
+        if self.fail_quit:
+            raise OSError("QUIT failed")
         self.closed = True
 
     def close(self) -> None:
+        self.close_count += 1
         self.closed = True
 
 
@@ -65,10 +72,14 @@ def test_ftps_client_upload_list_delete_and_failures(
     client.upload("plate.3mf", source)
     assert fake.data == b"payload"
     assert fake.closed
+    assert fake.quit_count == 1
+    assert fake.close_count == 0
     fake.closed = False
     assert client.list_files() == ["a", "z"]
+    assert fake.quit_count == 2
     client.delete("plate.3mf")
     assert fake.deleted == ["plate.3mf"]
+    assert fake.quit_count == 3
     fake.fail = True
     with pytest.raises(ProtocolError, match="upload"):
         client.upload("plate.3mf", io.BytesIO(b"x"))
@@ -76,6 +87,21 @@ def test_ftps_client_upload_list_delete_and_failures(
         client.list_files()
     with pytest.raises(ProtocolError, match="delete"):
         client.delete("plate.3mf")
+
+
+def test_ftps_list_and_delete_close_when_quit_fails(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    client = FTPSClient("192.0.2.10", "12345678", Path("certs/bambu-lab-ca.pem"))
+    fake = FakeFTP()
+    fake.fail_quit = True
+    monkeypatch.setattr(client, "_connect", lambda: fake)
+
+    assert client.list_files() == ["a", "z"]
+    client.delete("plate.3mf")
+
+    assert fake.quit_count == 2
+    assert fake.close_count == 2
 
 
 def test_ftps_upload_nonseekable_and_from_current_position(
