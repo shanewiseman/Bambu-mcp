@@ -9,6 +9,7 @@ from pathlib import Path
 from types import SimpleNamespace
 from typing import Any
 
+import paho.mqtt.client as mqtt
 import pytest
 
 from bambu_mcp.errors import ProtocolError, ValidationError
@@ -225,6 +226,169 @@ def test_paho_on_message_observes_receiver_future(monkeypatch: pytest.MonkeyPatc
     assert observed == [submitted]
 
 
+def make_paho_transport(*, connect_timeout: float = 0.05) -> PahoTransport:
+    async def receiver(topic: str, payload: bytes) -> None:
+        del topic, payload
+
+    return PahoTransport(
+        host="192.0.2.10",
+        serial="SERIAL",
+        access_code="12345678",
+        ca_file=Path("certs/bambu-lab-ca.pem"),
+        receiver=receiver,
+        disconnect_callback=lambda: None,
+        connect_timeout=connect_timeout,
+    )
+
+
+@pytest.mark.asyncio
+async def test_paho_connect_waits_for_report_subscription(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    transport = make_paho_transport()
+    loop_started = asyncio.Event()
+    subscriptions: list[tuple[str, int]] = []
+
+    monkeypatch.setattr(
+        transport.client,
+        "connect",
+        lambda host, port, keepalive: mqtt.MQTT_ERR_SUCCESS,
+    )
+
+    def subscribe(topic: str, qos: int) -> tuple[int, int]:
+        subscriptions.append((topic, qos))
+        return mqtt.MQTT_ERR_SUCCESS, 17
+
+    def loop_start() -> int:
+        loop_started.set()
+        return mqtt.MQTT_ERR_SUCCESS
+
+    monkeypatch.setattr(transport.client, "subscribe", subscribe)
+    monkeypatch.setattr(transport.client, "loop_start", loop_start)
+    connection = asyncio.create_task(transport.connect())
+    await loop_started.wait()
+
+    transport._on_connect(
+        transport.client,
+        None,
+        SimpleNamespace(),
+        SimpleNamespace(is_failure=False),
+        None,
+    )
+    await asyncio.sleep(0)
+    assert not connection.done()
+    assert subscriptions == [("device/SERIAL/report", 1)]
+
+    transport._on_subscribe(
+        transport.client,
+        None,
+        17,
+        [SimpleNamespace(is_failure=False)],
+        None,
+    )
+    await connection
+    assert transport._ready.is_set()
+
+
+@pytest.mark.parametrize("failure_stage", ["connack", "subscribe"])
+@pytest.mark.asyncio
+async def test_paho_connect_rejects_handshake_and_cleans_up(
+    monkeypatch: pytest.MonkeyPatch,
+    failure_stage: str,
+) -> None:
+    transport = make_paho_transport()
+    cleanup: list[str] = []
+    monkeypatch.setattr(
+        transport.client,
+        "connect",
+        lambda host, port, keepalive: mqtt.MQTT_ERR_SUCCESS,
+    )
+    monkeypatch.setattr(
+        transport.client,
+        "subscribe",
+        lambda topic, qos: (mqtt.MQTT_ERR_SUCCESS, 23),
+    )
+    monkeypatch.setattr(transport.client, "disconnect", lambda: cleanup.append("disconnect"))
+    monkeypatch.setattr(transport.client, "loop_stop", lambda: cleanup.append("loop_stop"))
+
+    def loop_start() -> int:
+        transport._on_connect(
+            transport.client,
+            None,
+            SimpleNamespace(),
+            SimpleNamespace(is_failure=failure_stage == "connack"),
+            None,
+        )
+        if failure_stage == "subscribe":
+            transport._on_subscribe(
+                transport.client,
+                None,
+                23,
+                [SimpleNamespace(is_failure=True)],
+                None,
+            )
+        return mqtt.MQTT_ERR_SUCCESS
+
+    monkeypatch.setattr(transport.client, "loop_start", loop_start)
+
+    with pytest.raises(ProtocolError, match="rejected"):
+        await transport.connect()
+
+    assert cleanup == ["disconnect", "loop_stop"]
+    assert not transport._ready.is_set()
+
+
+@pytest.mark.asyncio
+async def test_paho_connect_times_out_and_cleans_up(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    transport = make_paho_transport(connect_timeout=0.001)
+    cleanup: list[str] = []
+    monkeypatch.setattr(
+        transport.client,
+        "connect",
+        lambda host, port, keepalive: mqtt.MQTT_ERR_SUCCESS,
+    )
+    monkeypatch.setattr(transport.client, "loop_start", lambda: mqtt.MQTT_ERR_SUCCESS)
+    monkeypatch.setattr(transport.client, "disconnect", lambda: cleanup.append("disconnect"))
+    monkeypatch.setattr(transport.client, "loop_stop", lambda: cleanup.append("loop_stop"))
+
+    with pytest.raises(ProtocolError, match="handshake timed out"):
+        await transport.connect()
+
+    assert cleanup == ["disconnect", "loop_stop"]
+
+
+@pytest.mark.parametrize(
+    ("connect_result", "loop_result", "message"),
+    [
+        (mqtt.MQTT_ERR_NO_CONN, mqtt.MQTT_ERR_SUCCESS, "connect failed"),
+        (mqtt.MQTT_ERR_SUCCESS, mqtt.MQTT_ERR_INVAL, "network loop failed"),
+    ],
+)
+@pytest.mark.asyncio
+async def test_paho_connect_rejects_immediate_errors(
+    monkeypatch: pytest.MonkeyPatch,
+    connect_result: int,
+    loop_result: int,
+    message: str,
+) -> None:
+    transport = make_paho_transport()
+    cleanup: list[str] = []
+    monkeypatch.setattr(
+        transport.client,
+        "connect",
+        lambda host, port, keepalive: connect_result,
+    )
+    monkeypatch.setattr(transport.client, "loop_start", lambda: loop_result)
+    monkeypatch.setattr(transport.client, "disconnect", lambda: cleanup.append("disconnect"))
+
+    with pytest.raises(ProtocolError, match=message):
+        await transport.connect()
+
+    assert cleanup == ["disconnect"]
+
+
 @pytest.mark.asyncio
 async def test_paho_disconnect_fails_pending_ack_from_callback_thread() -> None:
     client: MQTTCommandClient
@@ -241,6 +405,7 @@ async def test_paho_disconnect_fails_pending_ack_from_callback_thread() -> None:
         disconnect_callback=lambda: client.disconnected(),
     )
     client = MQTTCommandClient("SERIAL", transport, ack_timeout=0.1)
+    transport._ready.set()
     transport.loop = asyncio.get_running_loop()
     pending = client.acks.register("1")
 
@@ -253,6 +418,7 @@ async def test_paho_disconnect_fails_pending_ack_from_callback_thread() -> None:
         None,
     )
     await asyncio.sleep(0)
+    assert not transport._ready.is_set()
 
     with pytest.raises(ProtocolError, match="connection was lost"):
         await pending
@@ -283,8 +449,10 @@ async def test_paho_close_disconnects_before_stopping_loop(
 
     monkeypatch.setattr(transport.client, "disconnect", disconnect)
     monkeypatch.setattr(transport.client, "loop_stop", loop_stop)
+    transport._ready.set()
     await transport.close()
     assert calls == ["disconnect", "loop_stop"]
+    assert not transport._ready.is_set()
 
     calls.clear()
 
@@ -322,6 +490,9 @@ async def test_paho_transport_topic_and_publish_results(monkeypatch: pytest.Monk
     )
     with pytest.raises(ProtocolError, match="outside"):
         await transport.publish("arbitrary/topic", b"{}", 1)
+    with pytest.raises(ProtocolError, match="not ready"):
+        await transport.publish("device/SERIAL/request", b"{}", 1)
+    transport._ready.set()
 
     class Info:
         rc = 0
