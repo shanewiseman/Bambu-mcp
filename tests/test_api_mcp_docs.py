@@ -245,6 +245,18 @@ def test_generated_references(tmp_path: Path) -> None:
         "responses"
     ]["200"]
     assert "application/json" not in content_response["content"]
+    unavailable = openapi["paths"]["/readyz"]["get"]["responses"]["503"]
+    assert unavailable["description"] == ("One or more required dependencies are not ready")
+    assert unavailable["content"]["application/json"]["schema"] == {
+        "$ref": "#/components/schemas/HealthView"
+    }
+    assert unavailable["content"]["application/json"]["example"] == {
+        "status": "not-ready",
+        "database": True,
+        "artifact_store": True,
+        "slicer": False,
+        "slicer_version": "2.7.1.62",
+    }
     assert content_response["content"]["application/octet-stream"]["schema"] == {
         "format": "binary",
         "type": "string",

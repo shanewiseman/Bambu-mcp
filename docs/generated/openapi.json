@@ -58,6 +58,57 @@
         "title": "HTTPValidationError",
         "type": "object"
       },
+      "HealthView": {
+        "additionalProperties": false,
+        "properties": {
+          "artifact_store": {
+            "title": "Artifact Store",
+            "type": "boolean"
+          },
+          "database": {
+            "title": "Database",
+            "type": "boolean"
+          },
+          "slicer": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Slicer"
+          },
+          "slicer_version": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Slicer Version"
+          },
+          "status": {
+            "enum": [
+              "ok",
+              "degraded",
+              "not-ready"
+            ],
+            "title": "Status",
+            "type": "string"
+          }
+        },
+        "required": [
+          "status",
+          "database",
+          "artifact_store"
+        ],
+        "title": "HealthView",
+        "type": "object"
+      },
       "ValidationError": {
         "properties": {
           "ctx": {
@@ -329,10 +380,29 @@
           "200": {
             "content": {
               "application/json": {
-                "schema": {}
+                "schema": {
+                  "$ref": "#/components/schemas/HealthView"
+                }
               }
             },
             "description": "Successful Response"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "example": {
+                  "artifact_store": true,
+                  "database": true,
+                  "slicer": false,
+                  "slicer_version": "2.7.1.62",
+                  "status": "not-ready"
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/HealthView"
+                }
+              }
+            },
+            "description": "One or more required dependencies are not ready"
           }
         },
         "summary": "Ready",

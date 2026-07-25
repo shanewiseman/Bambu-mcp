@@ -7,7 +7,7 @@ from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 from typing import Annotated, Any
 
-from fastapi import FastAPI, File, Header, HTTPException, Request, UploadFile
+from fastapi import FastAPI, File, Header, HTTPException, Request, Response, UploadFile
 from fastapi.responses import FileResponse, JSONResponse
 from pydantic import BaseModel, ConfigDict, Field
 from sqlalchemy import text
@@ -22,6 +22,7 @@ from bambu_mcp.errors import (
     ValidationError,
 )
 from bambu_mcp.mcp_server import create_mcp
+from bambu_mcp.schemas import HealthView
 from bambu_mcp.security import compare_api_key
 
 
@@ -109,20 +110,39 @@ def create_app(container: Container) -> FastAPI:
             "artifact_store": artifact_ok,
         }
 
-    @app.get("/readyz", tags=["operations"])
-    async def ready() -> JSONResponse:
+    @app.get(
+        "/readyz",
+        tags=["operations"],
+        response_model=HealthView,
+        responses={
+            503: {
+                "model": HealthView,
+                "description": "One or more required dependencies are not ready",
+                "content": {
+                    "application/json": {
+                        "example": {
+                            "status": "not-ready",
+                            "database": True,
+                            "artifact_store": True,
+                            "slicer": False,
+                            "slicer_version": "2.7.1.62",
+                        }
+                    }
+                },
+            }
+        },
+    )
+    async def ready(response: Response) -> HealthView:
         health_state = health()
         slicer_ok = await container.slicer.ready()
         ready_state = health_state["status"] == "ok" and slicer_ok
-        return JSONResponse(
-            status_code=200 if ready_state else 503,
-            content={
-                "status": "ok" if ready_state else "not-ready",
-                "database": health_state["database"],
-                "artifact_store": health_state["artifact_store"],
-                "slicer": slicer_ok,
-                "slicer_version": container.slicer.version,
-            },
+        response.status_code = 200 if ready_state else 503
+        return HealthView(
+            status="ok" if ready_state else "not-ready",
+            database=health_state["database"],
+            artifact_store=health_state["artifact_store"],
+            slicer=slicer_ok,
+            slicer_version=container.slicer.version,
         )
 
     @app.post("/api/v1/artifacts", status_code=201, tags=["artifacts"])
