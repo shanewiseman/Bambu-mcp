@@ -5,8 +5,8 @@ from typing import Any
 
 import pytest
 from conftest import make_3mf, make_stl
+from helpers import ingest
 from mcp.server.fastmcp.exceptions import ToolError
-from test_workflow_pipeline import ingest
 
 from bambu_mcp.container import Container
 from bambu_mcp.mcp_server import create_mcp
