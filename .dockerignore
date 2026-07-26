@@ -1,5 +1,8 @@
 .git
 .github
+.jenkins
+.ci-cache
+.ci-venv
 .venv
 .coverage
 .mypy_cache
@@ -10,3 +13,4 @@ data
 dist
 htmlcov
 secrets
+Jenkinsfile
