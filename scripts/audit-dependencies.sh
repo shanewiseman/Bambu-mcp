@@ -4,7 +4,8 @@ set -eu
 repository_dir=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)
 cd "$repository_dir"
 
-mkdir -p artifacts
+export XDG_CACHE_HOME="$repository_dir/.ci-cache"
+mkdir -p artifacts "$XDG_CACHE_HOME"
 .ci-venv/bin/pip-audit \
   --requirement requirements.lock \
   --no-deps \
