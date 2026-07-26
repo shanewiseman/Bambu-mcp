@@ -2,6 +2,6 @@
 
 jenkinsServicePipeline(
     repositoryUrl: 'https://github.com/shanewiseman/Bambu-mcp.git',
-    trustedBranch: 'master',
+    trustedBranch: 'swiseman/feature/JenkinsIntegration',
     repository: 'shanewiseman/Bambu-mcp'
 )
