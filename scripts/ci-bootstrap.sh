@@ -12,10 +12,10 @@ fi
 mkdir -p .ci-cache
 python -c \
   "import sys; assert sys.version_info[:2] == (3, 12) and sys.version_info >= (3, 12, 11), sys.version"
-python -m venv .ci-venv
-.ci-venv/bin/python -m pip install --requirement requirements-dev.lock
+python -m venv --clear .ci-venv
+.ci-venv/bin/python -m pip install --require-hashes --requirement requirements-dev.lock
 .ci-venv/bin/python -m pip install --no-deps --no-build-isolation --editable .
-python -m venv .ci-cache/runtime-venv
-.ci-cache/runtime-venv/bin/python -m pip install --requirement requirements.lock
+python -m venv --clear .ci-cache/runtime-venv
+.ci-cache/runtime-venv/bin/python -m pip install --require-hashes --requirement requirements.lock
 
 echo "Installed the exact Python 3.12 development and runtime environments"
