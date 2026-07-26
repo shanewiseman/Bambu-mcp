@@ -1,7 +1,7 @@
-@Library('jenkins-service-contract@v1') _
+@Library('jenkins-service-contract') _
 
 jenkinsServicePipeline(
     repositoryUrl: 'https://github.com/shanewiseman/Bambu-mcp.git',
-    trustedBranch: 'main',
+    trustedBranch: 'master',
     repository: 'shanewiseman/Bambu-mcp'
 )
