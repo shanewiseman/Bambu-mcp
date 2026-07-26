@@ -172,25 +172,29 @@ and Docker administrators remain able to observe process arguments. Read the
 
 ## Development and verification
 
-Python 3.12 is required.
+The application supports Python 3.12. The locked CI environment requires
+Python 3.12.11 or a newer 3.12 patch release.
 
 ```bash
-python3.12 -m venv .venv
-.venv/bin/pip install -e '.[dev]'
-.venv/bin/ruff check .
-.venv/bin/ruff format --check .
-.venv/bin/mypy src
-.venv/bin/pytest
-.venv/bin/bandit -c pyproject.toml -r src
-.venv/bin/pip-audit . --strict
-.venv/bin/python -m build
+scripts/ci-bootstrap.sh
+scripts/validate-native.sh
 ```
+
+The bootstrap creates `.ci-venv` and `.ci-cache/runtime-venv` from exact Python
+3.12 development and runtime locks. The native gate checks Ruff, formatting,
+strict mypy, compilation, Bandit, 90% branch coverage, generated API
+references, wheel/sdist boundaries, the runtime CycloneDX inventory, and
+dependency licenses. JenkinsService consumes the same commands from
+`.jenkins/pipeline.yaml`, adds mandatory Gitleaks and Trivy scans, and grants
+network egress only to dependency bootstrap and the explicit vulnerability
+audit.
 
 Tests cover schema boundaries, artifact/path/archive safety, X2D mapping,
 protocol sequencing and duplicate delivery, TLS construction, redaction,
 approval expiry/replay, durable recovery, mocked MQTT/FTPS/slicer behavior,
-HTTP and MCP contracts, and an end-to-end simulated X2D print pipeline. Hardware
-tests are manual and evidence-gated. See [testing](docs/testing.md).
+HTTP and MCP contracts, and an end-to-end simulated X2D print pipeline.
+Container image, full Studio source build, and hardware checks remain
+operator-run and evidence-gated. See [testing](docs/testing.md).
 
 ## Project and licensing status
 

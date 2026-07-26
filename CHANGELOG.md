@@ -10,3 +10,6 @@ yet promise semantic-version compatibility.
 - Initial X2D-first Python MCP core, isolated slicer sidecar, durable workflows,
   narrow artifact/approval API, protocol provenance, publication documentation,
   and automated verification suite.
+- JenkinsService v1 integration with trusted-branch orchestration, digest-pinned
+  Python execution, exact runtime/development locks, hardware-free validation
+  scripts, mandatory service scans, and bounded egress.

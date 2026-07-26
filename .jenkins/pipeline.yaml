@@ -1,0 +1,75 @@
+apiVersion: ci.jenkinsservice.dev/v1
+runtime:
+  image: python:3.12.11-slim-bookworm@sha256:519591d6871b7bc437060736b9f7456b8731f1499a57e22e6c285135ae657bf7
+  timeoutMinutes: 60
+  cpu: 4
+  memory: 4Gi
+  pids: 1024
+  network: none
+  environment:
+    PIP_CACHE_DIR: .ci-cache/pip
+    PIP_DISABLE_PIP_VERSION_CHECK: "1"
+    PYTHONDONTWRITEBYTECODE: "1"
+steps:
+  standards:
+    - id: dependency-bootstrap
+      name: Locked dependency bootstrap
+      command: ["scripts/ci-bootstrap.sh"]
+      network: egress
+      timeoutMinutes: 15
+    - id: static-analysis
+      name: Ruff, format, mypy, and compile validation
+      command: ["scripts/validate-static.sh"]
+      network: none
+      timeoutMinutes: 10
+    - id: source-security
+      name: Bandit source security analysis
+      command: ["scripts/validate-source-security.sh"]
+      network: none
+  tests:
+    - id: python-tests
+      name: Python tests and branch coverage
+      command: ["scripts/test-native.sh"]
+      network: none
+      timeoutMinutes: 30
+      reports:
+        - type: junit
+          path: artifacts/junit.xml
+        - type: coverage
+          path: artifacts/coverage.xml
+  custom:
+    - id: generated-references
+      name: Generated API and MCP reference validation
+      command: ["scripts/validate-generated-docs.sh"]
+      network: none
+    - id: distributions
+      name: Wheel and source distribution validation
+      command: ["scripts/validate-distribution.sh"]
+      network: none
+      timeoutMinutes: 10
+    - id: supply-chain
+      name: CycloneDX and dependency license validation
+      command: ["scripts/validate-supply-chain.sh"]
+      network: none
+      timeoutMinutes: 10
+      reports:
+        - type: cyclonedx
+          path: artifacts/sbom/bambu-mcp-ci.cdx.json
+    - id: dependency-audit
+      name: Python vulnerability audit
+      command: ["scripts/audit-dependencies.sh"]
+      network: egress
+      timeoutMinutes: 10
+security:
+  gitleaks: true
+  trivy: true
+artifacts:
+  - name: validation-evidence
+    path: artifacts/**
+    required: true
+review:
+  enabled: true
+  pullRequestsOnly: true
+  criticalSeverities:
+    - critical
+  maxDiffBytes: 200000

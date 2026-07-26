@@ -1,5 +1,7 @@
 .coverage
 coverage.xml
+.ci-cache/
+.ci-venv/
 .env
 .mypy_cache/
 .pytest_cache/
